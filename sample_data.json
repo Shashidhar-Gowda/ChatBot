@@ -1,0 +1,5 @@
+[
+  {"advertising": 1000, "sales": 5000, "date": "2023-01-01"},
+  {"advertising": 1500, "sales": 6000, "date": "2023-01-02"},
+  {"advertising": 2000, "sales": 6500, "date": "2023-01-03"}
+]

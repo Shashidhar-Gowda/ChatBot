@@ -12,26 +12,22 @@ from langchain.document_loaders import CSVLoader, PyPDFLoader
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.chains.question_answering import load_qa_chain
-from langchain_community.chat_models import ChatOpenAI
 from django.contrib.auth import get_user_model
-from auth import verify_token
-from llm_chain import get_bot_response, reset_memory, llm
+try:
+    from endpoints.auth import verify_token
+except ImportError:
+    from .auth import verify_token
+try:
+    from endpoints.llm_chain import get_bot_response, reset_memory, llm
+except ImportError:
+    from .llm_chain import get_bot_response, reset_memory, llm
 import os
 from uuid import uuid4
 from typing import Optional
 
-
-import getpass
-if not os.environ.get("GROQ_API_KEY"):
-    os.environ["GROQ_API_KEY"] = getpass.getpass("Enter API key for Groq: ")
-
-
-
-
 app = FastAPI()
 router = APIRouter()
 security = HTTPBearer()
-
 
 origins = [
     "http://localhost:5174",
@@ -46,11 +42,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-import getpass
-if not os.environ.get("GROQ_API_KEY"):
-    os.environ["GROQ_API_KEY"] = getpass.getpass("Enter API key for Groq: ")
+UPLOAD_DIR = "uploaded_files"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-GROQ_API_KEY = os.environ["GROQ_API_KEY"]
+class ChatRequest(BaseModel):
+    prompt: str
+
+class PromptRequest(BaseModel):
+    prompt: str
+
+class IntentResponse(BaseModel):
+    handled: bool
+    reply: Optional[str] = None
 
 @app.post("/api/login")
 async def login(request: Request):
@@ -70,8 +73,6 @@ async def login(request: Request):
     except httpx.RequestError as e:
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
-
-
 @app.post("/api/signup")
 async def signup(request: Request):
     body = await request.json()
@@ -89,39 +90,22 @@ async def signup(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-class ChatRequest(BaseModel):
-    prompt: str
-
 @router.post("/api/chat")
-async def chat_with_groq(request: ChatRequest):
+async def chat_with_llm(
+    request: Request, 
+    chat_request: ChatRequest,
+    token: str = Depends(verify_token)
+):
     try:
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        data = {
-            "model": "deepseek-r1-distill-llama-70b",
-            "messages": [
-                {"role": "user", "content": request.prompt}
-            ]
-        }
-
-        response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers=headers,
-            json=data
-        )
-
-        if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail=response.text)
-
-        reply = response.json()["choices"][0]["message"]["content"]
-        return {"reply": reply}
-
+        # Get user ID from verified token
+        user_id = token.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+            
+        response = get_bot_response(str(user_id), chat_request.prompt)
+        return {"reply": response}
     except Exception as e:
-        print(f"Groq error: {str(e)}")
-        raise HTTPException(status_code=500, detail="LLM request failed")
+        raise HTTPException(status_code=500, detail=f"LLM error: {str(e)}")
 
 @router.post("/api/ask-file")
 async def ask_file(prompt: str = Form(...), file: UploadFile = Form(...), token=Depends(security)):
@@ -145,52 +129,59 @@ async def ask_file(prompt: str = Form(...), file: UploadFile = Form(...), token=
 
     return {"answer": response}
 
-@router.post("/api/reset_chat")
+@app.post("/api/reset_chat")
 async def reset_chat(token: str = Depends(verify_token)):
     reset_memory()
     return {"message": "Chat memory reset"}
 
-
-UPLOAD_DIR = "uploaded_files"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
 @app.post("/api/upload_dataset")
 async def upload_dataset(file: UploadFile = File(...)):
     try:
+        # Validate file size (max 50MB)
+        MAX_SIZE = 50 * 1024 * 1024  # 50MB
+        file.file.seek(0, 2)  # Seek to end
+        file_size = file.file.tell()
+        file.file.seek(0)  # Reset pointer
+        
+        if file_size > MAX_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Max size is {MAX_SIZE/1024/1024}MB"
+            )
+
+        # Validate file extension
+        valid_extensions = ['.csv', '.json', '.xlsx', '.xls']
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in valid_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type. Supported types: {', '.join(valid_extensions)}"
+            )
+
+        # Create unique filename
         file_id = str(uuid4())
         file_path = os.path.join(UPLOAD_DIR, f"{file_id}_{file.filename}")
-        
+
+        # Save file in chunks to handle large files
         with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            while True:
+                chunk = file.file.read(1024 * 1024)  # 1MB chunks
+                if not chunk:
+                    break
+                buffer.write(chunk)
 
-        # Triggering agent pipeline here
-        result = run_rule_based_agent(input_type="csv", input_value=file_path)
+        return JSONResponse(content={
+            "message": "File uploaded successfully",
+            "path": file_path,
+            "size": file_size,
+            "extension": file_ext
+        })
 
-        return JSONResponse(content={"message": "File uploaded", "path": file_path})
-    
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
-
-class PromptRequest(BaseModel):
-    prompt: str
-
-class IntentResponse(BaseModel):
-    handled: bool
-    reply: Optional[str] = None
-
-@router.post("/api/predict_intent", response_model=IntentResponse)
-async def predict_intent(data: PromptRequest):
-    try:
-        # 🔍 Try to get a tool-based or intent-based reply first
-        response = get_intent_response(data.prompt)
-
-        if response:
-            return {"handled": True, "reply": response}
-        else:
-            return {"handled": False}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-app.include_router(router)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Upload failed: {str(e)}"
+        )
 

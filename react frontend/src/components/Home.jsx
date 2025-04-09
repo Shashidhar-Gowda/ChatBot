@@ -1,245 +1,197 @@
-import React, { useEffect, useState } from "react";
-import axios from "axios";
-import "../home.css";
+import React, { useState, useRef, useEffect } from 'react';
+import '../home.css';
 
-const ChatBox = () => {
-  const [prompt, setPrompt] = useState("");
+const Home = () => {
+  const [prompt, setPrompt] = useState('');
   const [chatLog, setChatLog] = useState([]);
-  const [chats, setChats] = useState([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [file, setFile] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
+  const fileInputRef = useRef(null);
+  const messagesEndRef = useRef(null);
 
-  const token =
-    localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
-
-  // Fetch historical chats
+  // Auto-scroll to bottom of chat
   useEffect(() => {
-    const fetchChats = async () => {
-      try {
-        const res = await axios.get("http://127.0.0.1:8000/api/get_chats/", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        setChats(res.data);
-      } catch (error) {
-        console.error("Error fetching chat history:", error);
-      }
-    };
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatLog]);
 
-    fetchChats();
-  }, []);
+  const handleFileUpload = (e) => {
+    setSelectedFile(e.target.files[0]);
+    // Auto-submit file
+    if (e.target.files[0]) {
+      setIsLoading(true);
+      setTimeout(() => {
+        setChatLog([...chatLog, 
+          { text: `Uploaded file: ${e.target.files[0].name}`, isUser: true },
+          { text: "I've received your file. How can I help with it?", isUser: false }
+        ]);
+        setSelectedFile(null);
+        setIsLoading(false);
+      }, 1500);
+    }
+  };
 
   const sendMessage = async () => {
     if (!prompt.trim()) return;
-
-    const userMessage = { user: prompt, bot: "loading..." };
-    setChatLog((prevLog) => [...prevLog, userMessage]);
-    const currentIndex = chatLog.length;
-    setPrompt("");
-
-    const sendRequest = async (accessToken) => {
-      return axios.post(
-        "http://127.0.0.1:8001/api/chat",
-        { prompt },
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      );
-    };
-
-    const handleFileChange = (e) => {
-    setSelectedFile(e.target.files[0]);
-  };
-
-  const handleUpload = async () => {
-    if (!selectedFile) {
-      alert("Please select a file first.");
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("file", selectedFile);
-
-    const token = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
-
+    
+    setIsLoading(true);
+    const userMessage = { text: prompt, isUser: true };
+    setChatLog([...chatLog, userMessage]);
+    setPrompt('');
+    
     try {
-      const response = await axios.post("http://127.0.0.1:8001/api/upload_dataset", formData, {
+      // Call your backend API here
+      // Get token from cookies or auth context
+      const token = document.cookie.split('; ')
+        .find(row => row.startsWith('token='))
+        ?.split('=')[1] || localStorage.getItem('token');
+      
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
+
+      const response = await fetch('http://127.0.0.1:8000/api/get_ai_response/', {
+        method: 'POST',
         headers: {
-          "Content-Type": "multipart/form-data",
-          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
+        credentials: 'include',
+        body: JSON.stringify({ prompt })
       });
-
-      alert("File uploaded successfully!");
-      console.log("Upload response:", response.data);
+      
+      const data = await response.json();
+      if (data.status === 'success') {
+          // Clean up name remembering response
+          let responseText = data.response;
+          // Format name remembering responses
+          if (data.response.includes("I'll remember your name is ")) {
+              const name = data.response.replace("I'll remember your name is ", "").trim();
+              responseText = `Got it! I'll call you ${name}`;
+          } 
+          // Format name recall responses
+          else if (data.response.startsWith("Your name is ")) {
+              const name = data.response.replace("Your name is ", "").trim();
+              responseText = `Yes, your name is ${name}`;
+          }
+              
+          setChatLog(prev => [...prev, { 
+              text: responseText,
+              isUser: false 
+          }]);
+      } else {
+          throw new Error(data.error || 'Unknown error');
+      }
     } catch (error) {
-      console.error("File upload failed:", error);
-      alert("File upload failed. Check console for details.");
-    }
-  };
-
-    try {
-      const response = await sendRequest(token);
-      const botReply = response.data.reply || "I'm not sure how to respond.";
-
-      setChatLog((prevLog) => {
-        const updatedLog = [...prevLog];
-        updatedLog[currentIndex] = { ...userMessage, bot: botReply };
-        return updatedLog;
-      });
-    } catch (error) {
-      console.error("Chat error:", error);
-      setChatLog((prevLog) => {
-        const updatedLog = [...prevLog];
-        updatedLog[currentIndex] = {
-          ...userMessage,
-          bot: "Oops! Something went wrong.",
-        };
-        return updatedLog;
-      });
-    }
-  };
-
-  const resetChat = async () => {
-    try {
-      await axios.post(
-        "http://127.0.0.1:8001/api/reset_chat",
-        { prompt },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+        console.error("API Error:", error);
+        let errorMessage = "Sorry, I'm having trouble responding. Please try again.";
+        if (error.response) {
+            if (error.response.status === 405) {
+                errorMessage = "Invalid request method. Please try again.";
+            } else if (error.response.status === 401) {
+                errorMessage = "Please login again.";
+                window.location.href = '/login';
+            } else if (error.response.data?.error) {
+                errorMessage = error.response.data.error;
+            } else if (error.response.data?.response) {
+                errorMessage = error.response.data.response;
+            }
+        } else if (error.message) {
+            errorMessage = error.message;
         }
-      );
-      alert("Chat memory has been reset!");
-    } catch (err) {
-      console.error("Reset error:", err);
+        setChatLog(prev => [...prev, { 
+            text: `Error: ${errorMessage}`,
+            isUser: false,
+            isError: true 
+        }]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleFileChange = (e) => {
-    setSelectedFile(e.target.files[0]);
-  };
-
-  const handleUpload = async () => {
-    if (!selectedFile) {
-      alert("Please select a file first.");
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("file", selectedFile);
-
-    const token = localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
-
-    try {
-      const response = await axios.post("http://127.0.0.1:8001/api/upload_dataset", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      alert("File uploaded successfully!");
-      console.log("Upload response:", response.data);
-    } catch (error) {
-      console.error("File upload failed:", error);
-      alert("File upload failed. Check console for details.");
-    }
-  };
-  
+  const [conversations, setConversations] = useState([
+    { id: 1, name: 'Project Discussion', date: new Date().toLocaleDateString() },
+    { id: 2, name: 'Data Analysis', date: new Date().toLocaleDateString() }
+  ]);
 
   return (
-    <div className="chat-container">
-      <div className="chat-header">Chat with AI 🤖</div>
-
-      {/*  Upload UI */}
-      <div style={{ marginBottom: "1rem", textAlign: "center" }}>
-        <input type="file" accept=".csv,.xlsx" onChange={handleFileChange} />
-        <button onClick={handleUpload} style={{ marginLeft: "10px" }}>
-          📁 Upload Dataset
+    <div className="chat-gpt-container">
+      <div className="sidebar">
+        <button className="new-chat-btn">
+          <span>+</span> New Chat
         </button>
-      </div>
-
-      {/* Live Chat */}
-      <div className="chat-log">
-        {chatLog.map((entry, idx) => (
-          <div key={idx} className="chat-entry">
-            <div className="chat-bubble user">{entry.user}</div>
-            <div className="chat-bubble bot">{entry.bot}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Input Area */}
-      <div className="chat-input">
-        <input
-          type="text"
-          placeholder="Ask me anything..."
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-        />
-        <button onClick={sendMessage}>Send</button>
-        <button
-          onClick={resetChat}
-          style={{ marginLeft: "10px", backgroundColor: "#ff4d4f", color: "white" }}
-        >
-          Reset
-        </button>
-      </div>
-
-      {/* Toggle Button */}
-      <div style={{ marginTop: "20px", textAlign: "center" }}>
-        <button
-          onClick={() => setShowHistory((prev) => !prev)}
-          style={{
-            padding: "8px 16px",
-            backgroundColor: "#4CAF50",
-            color: "white",
-            borderRadius: "5px",
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
-          {showHistory ? "⬆️ Hide History" : "📋 Show Chat History"}
-        </button>
-      </div>
-
-      {/* Chat History Section */}
-      {showHistory && (
-        <div style={{ marginTop: "2rem" }}>
-          <h3 style={{ textAlign: "center" }}>Your Chat History</h3>
-          {chats.length === 0 ? (
-            <p style={{ textAlign: "center" }}>No previous chats found.</p>
-          ) : (
-            chats.map((chat, index) => (
-              <div
-                key={index}
-                style={{
-                  padding: "1rem",
-                  borderBottom: "1px solid #ccc",
-                  background: "#f9f9f9",
-                  borderRadius: "5px",
-                  margin: "10px",
-                }}
-              >
-                <p><strong>You:</strong> {chat.prompt}</p>
-                <p><strong>Bot:</strong> {chat.response}</p>
-                <p style={{ fontSize: "0.8rem", color: "gray" }}>
-                  {new Date(chat.timestamp).toLocaleString()}
-                </p>
-              </div>
-            ))
-          )}
+        <div className="conversations-list">
+          {conversations.map(conv => (
+            <div key={conv.id} className="conversation-item">
+              <div className="conversation-name">{conv.name}</div>
+              <div className="conversation-date">{conv.date}</div>
+            </div>
+          ))}
         </div>
-      )}
+      </div>
+      <div className="main-content">
+        {chatLog.length === 0 && (
+          <div className="empty-state">
+            <h2>BrainBot</h2>
+            <p>How can I help you today?</p>
+          </div>
+        )}
+
+        {chatLog.length > 0 && (
+          <div className="chat-log">
+            {chatLog.map((message, index) => (
+              <div key={index} className={`chat-message ${message.isUser ? 'user' : 'bot'}`}>
+                <div className="message-content">
+                  <p>{message.text}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="chat-input-container">
+          <div className="input-wrapper">
+            <input
+              type="text"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+              placeholder="Message BrainBot..."
+              disabled={isLoading}
+            />
+            <button
+              onClick={sendMessage}
+              className="send-button"
+              disabled={isLoading || !prompt.trim()}
+            >
+              {isLoading ? (
+                <div className="loading-spinner" />
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M1 1L15 8L1 15" stroke="currentColor" strokeWidth="2" />
+                </svg>
+              )}
+            </button>
+          </div>
+          <div className="input-actions">
+            <label className="file-upload-button">
+              <input
+                type="file"
+                className="file-input"
+                onChange={handleFileUpload}
+                accept=".pdf,.doc,.docx,.txt"
+                ref={fileInputRef}
+              />
+              <span>Upload</span>
+            </label>
+            <div className="disclaimer">
+              BrainBot can make mistakes. Consider checking important information.
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
 
-export default ChatBox;
+export default Home;

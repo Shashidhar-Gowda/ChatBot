@@ -9,59 +9,133 @@
         "Visualize the dataset",
         "Open the file"
       ],
-      "responses": ["Here is the dataset."]
+      "responses": ["Here is the dataset."],
+      "tool": "Describe"
     },
     {
-      "tag": "train_model",
+      "tag": "descriptive_stats",
       "patterns": [
-        "Train a model",
-        "Start training",
-        "Build a model",
-        "Run training",
-        "Train using this data"
+        "Show statistics",
+        "Give me the stats",
+        "What are the descriptive statistics?",
+        "Calculate mean and standard deviation"
       ],
-      "responses": ["Model training is now starting."]
+      "responses": ["Here are the descriptive statistics:"],
+      "tool": "Describe"
     },
     {
-      "tag": "chat",
+      "tag": "correlation_analysis",
       "patterns": [
-        "Hello",
-        "Hi",
-        "What's up?",
-        "How are you?",
-        "Can we talk?"
+        "Analyze relationship between X and Y",
+        "What's the correlation between X and Y?",
+        "Show correlation",
+        "How are X and Y related?"
       ],
-      "responses": ["Hello! How can I assist you today?"]
+      "responses": ["Here's the correlation analysis:"],
+      "tool": "Correlation"
     },
     {
-      "tag": "data_analysis",
+      "tag": "regression_analysis",
       "patterns": [
-        "Analyze the data",
-        "Do some analysis",
-        "Show insights",
-        "Generate stats"
+        "Run regression analysis",
+        "Predict Y from X",
+        "Show linear relationship",
+        "What's the regression coefficient?"
       ],
-      "responses": ["Starting data analysis."]
+      "responses": ["Here's the regression analysis:"],
+      "tool": "Regression"
+    },
+    {
+      "tag": "classification",
+      "patterns": [
+        "Classify this data",
+        "Predict categories",
+        "Run classification",
+        "What group does this belong to?"
+      ],
+      "responses": ["Here's the classification result:"],
+      "tool": "Classify"
+    },
+    {
+      "tag": "bigquery",
+      "patterns": [
+        "Query BigQuery",
+        "Get data from BigQuery",
+        "Run SQL query",
+        "Access database"
+      ],
+      "responses": ["Querying BigQuery..."],
+      "tool": "BigQuery"
     },
     {
       "tag": "greeting",
-      "patterns": ["Hi", "Hello", "Hey", "Good morning"],
-      "responses": ["Hey there!", "Hi!", "Hello!"]
+      "patterns": [
+        "Hi", "Hello", "Hey", 
+        "Good morning", "Good afternoon", "Good evening",
+        "Hi there", "Hello there", "Hey there",
+        "Greetings", "Salutations", "Howdy"
+      ],
+      "responses": [
+        "Hello! I'm BrainBot, your data analysis assistant.",
+        "Hi there! Ready to analyze some data?",
+        "Greetings! How can I assist with your data today?"
+      ],
+      "options": {
+        "case_sensitive": false,
+        "strip_punctuation": true
+      }
     },
     {
       "tag": "goodbye",
       "patterns": ["Bye", "See you", "Later", "Goodbye"],
-      "responses": ["Goodbye!", "See you soon!"]
+      "responses": ["Goodbye! Come back with more data questions!"]
     },
     {
       "tag": "thanks",
       "patterns": ["Thanks", "Thank you", "Appreciate it"],
-      "responses": ["You're welcome!", "Glad to help!"]
+      "responses": ["You're welcome! Let me know if you need more analysis."]
     },
     {
       "tag": "noanswer",
       "patterns": ["..."],
-      "responses": ["I didn't quite catch that."]
+      "responses": ["I didn't understand. Could you rephrase your data question?"]
+    },
+    {
+      "tag": "timeout",
+      "patterns": [],
+      "responses": [
+        "The analysis is taking longer than expected. Trying a simpler approach...",
+        "Processing a large dataset. Please wait while I optimize...",
+        "Giving the analysis more time to complete..."
+      ]
+    },
+    {
+      "tag": "price_comparison",
+      "patterns": [
+        "which area price is more",
+        "highest price area", 
+        "compare area prices",
+        "price by area",
+        "show areas by price",
+        "top priced areas",
+        "most expensive areas",
+        "price distribution by area"
+      ],
+      "responses": [
+        "Analyzing area prices...",
+        "Processing price comparison...",
+        "Checking area price data..."
+      ],
+      "tool": "Describe"
+    },
+    {
+      "tag": "retry",
+      "patterns": [],
+      "responses": [
+        "Trying again with a simpler analysis...",
+        "Attempting a faster approach...",
+        "Retrying with optimized parameters..."
+      ]
     }
   ]
 }

@@ -12,6 +12,13 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+import sys
+import os
+
+# Add project root and endpoints to Python path
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(BASE_DIR, '..'))  # Add project root
+sys.path.append(os.path.join(BASE_DIR, '../endpoints'))  # Add endpoints directly
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -40,16 +47,61 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'chatbot',
     'rest_framework',
+    'corsheaders',
+    'channels',
 ]
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5174",
+    "http://localhost:5175",
+    "http://127.0.0.1:5174",
+    "http://127.0.0.1:5175",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
 ]
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+CORS_EXPOSE_HEADERS = [
+    'content-type',
+    'x-content-type-options',
+]
+
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only allow all in debug mode
+
+# WebSocket/ASGI settings
+ASGI_APPLICATION = "backend.asgi.application"
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
 
 
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -71,6 +123,11 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
     "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
+    "SIGNING_KEY": SECRET_KEY,  # Explicitly use Django's secret key
+    "VERIFYING_KEY": None,
+    "ALGORITHM": "HS256",
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
 }
 
 REST_FRAMEWORK = {

@@ -8,7 +8,7 @@ const SignUp = () => {
   const [error, setError] = useState('');
 
   const handleSignup = async (e) => {
-    e.preventDefault();  // Prevent form submission from refreshing the page
+    e.preventDefault();
 
     if (!email || !password) {
       setError('Please enter both email and password');
@@ -16,37 +16,25 @@ const SignUp = () => {
     }
 
     try {
-      setLoading(true);  // Start loading while making the request
-
+      setLoading(true);
       const response = await axios.post(
         "http://127.0.0.1:8001/api/signup",
-        {
-          email,
-          password,
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",  // Ensure the content-type is set to JSON
-          },
-        }
+        { email, password },
+        { headers: { "Content-Type": "application/json" } }
       );
 
-      setLoading(false); // Stop loading once we get a response
+      setLoading(false);
       alert("Signup successful! Please log in.");
-      setEmail(""); // Clear form fields
+      setEmail("");
       setPassword("");
-      setError(""); // Clear any previous error
+      setError("");
     } catch (error) {
-      setLoading(false); // Stop loading if there's an error
-      console.error("Signup Error:", error);  // Log the error for debugging
-
+      setLoading(false);
       const errorMessage =
-        error.response?.data?.error || // Custom error like "User already exists"
-        error.response?.data?.detail || // DRF default error messages
+        error.response?.data?.error ||
+        error.response?.data?.detail ||
         "Signup failed. Please try again.";
-
-    setError(errorMessage);
-
+      setError(errorMessage);
     }
   };
 
@@ -54,29 +42,33 @@ const SignUp = () => {
     <div className="signup-container">
       <h2>Sign Up</h2>
       
-      {error && <div className="error-message">{error}</div>}  {/* Display error message */}
+      {error && <div className="error-message">{error}</div>}
 
-      <form onSubmit={handleSignup}> {/* Handle form submission */}
-        <div>
-          <label>Email</label>
+      <form onSubmit={handleSignup}>
+        <div className="form-group">
           <input
             type="email"
             placeholder="Enter your email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            className="form-input"
           />
         </div>
-        <div>
-          <label>Password</label>
+        <div className="form-group">
           <input
             type="password"
             placeholder="Enter your password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            className="form-input"
           />
         </div>
-        <div>
-          <button type="submit" disabled={loading}>  {/* Use type="submit" for form submission */}
+        <div className="login-center-buttons">
+          <button 
+            type="submit" 
+            className="btn-primary"
+            disabled={loading}
+          >
             {loading ? 'Signing Up...' : 'Sign Up'}
           </button>
         </div>

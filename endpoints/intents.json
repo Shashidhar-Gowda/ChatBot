@@ -1,0 +1,67 @@
+{
+  "intents": [
+    {
+      "tag": "dataset_query",
+      "patterns": [
+        "Can you show me the dataset?",
+        "What does the data look like?",
+        "Show the data",
+        "Visualize the dataset",
+        "Open the file"
+      ],
+      "responses": ["Here is the dataset."]
+    },
+    {
+      "tag": "train_model",
+      "patterns": [
+        "Train a model",
+        "Start training",
+        "Build a model",
+        "Run training",
+        "Train using this data"
+      ],
+      "responses": ["Model training is now starting."]
+    },
+    {
+      "tag": "chat",
+      "patterns": [
+        "Hello",
+        "Hi",
+        "What's up?",
+        "How are you?",
+        "Can we talk?"
+      ],
+      "responses": ["Hello! How can I assist you today?"]
+    },
+    {
+      "tag": "data_analysis",
+      "patterns": [
+        "Analyze the data",
+        "Do some analysis",
+        "Show insights",
+        "Generate stats"
+      ],
+      "responses": ["Starting data analysis."]
+    },
+    {
+      "tag": "greeting",
+      "patterns": ["Hi", "Hello", "Hey", "Good morning"],
+      "responses": ["Hey there!", "Hi!", "Hello!"]
+    },
+    {
+      "tag": "goodbye",
+      "patterns": ["Bye", "See you", "Later", "Goodbye"],
+      "responses": ["Goodbye!", "See you soon!"]
+    },
+    {
+      "tag": "thanks",
+      "patterns": ["Thanks", "Thank you", "Appreciate it"],
+      "responses": ["You're welcome!", "Glad to help!"]
+    },
+    {
+      "tag": "noanswer",
+      "patterns": ["..."],
+      "responses": ["I didn't quite catch that."]
+    }
+  ]
+}

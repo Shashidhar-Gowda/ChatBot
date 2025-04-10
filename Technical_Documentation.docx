@@ -1,0 +1,64 @@
+[Content_Types].xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>
+
+word/document.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>Technical Documentation</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Project: AI Chatbot with Authentication</w:t></w:r></w:p>
+    
+    <!-- Core Functionality Section -->
+    <w:p><w:r><w:t style="Heading1">1. Core Functionality</w:t></w:r></w:p>
+    <w:p><w:r><w:t>The system integrates:</w:t></w:r></w:p>
+    <w:p><w:r><w:t>- User authentication flow</w:t></w:r></w:p>
+    <w:p><w:r><w:t>- Langchain agent pipeline</w:t></w:r></w:p>
+    <w:p><w:r><w:t>- React frontend with Django/Flask backend</w:t></w:r></w:p>
+
+    <!-- Detailed Function Flow -->
+    <w:p><w:r><w:t style="Heading2">2. Function-Level Details</w:t></w:r></w:p>
+    
+    <w:p><w:r><w:t style="Heading3">2.1 Authentication Flow</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Functions called:</w:t></w:r></w:p>
+    <w:p><w:r><w:t>1. Login.jsx - handleSubmit()</w:t></w:r></w:p>
+    <w:p><w:r><w:t>   - Calls: authAPI.login(email, password)</w:t></w:r></w:p>
+    <w:p><w:r><w:t>2. auth.py - login()</w:t></w:r></w:p>
+    <w:p><w:r><w:t>   - Calls: User.objects.authenticate()</w:t></w:r></w:p>
+    <w:p><w:r><w:t>   - Calls: generate_jwt_token()</w:t></w:r></w:p>
+
+    <w:p><w:r><w:t style="Heading3">2.2 Langchain Agent Flow</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Functions called:</w:t></w:r></w:p>
+    <w:p><w:r><w:t>1. Chat.jsx - sendMessage()</w:t></w:r></w:p>
+    <w:p><w:r><w:t>   - Calls: chatAPI.post(message)</w:t></w:r></w:p>
+    <w:p><w:r><w:t>2. rule_based_agent_pipeline.py - process_input()</w:t></w:r></w:p>
+    <w:p><w:r><w:t>   - Calls: initialize_agent()</w:t></w:r></w:p>
+    <w:p><w:r><w:t>   - Calls: tool_search()</w:t></w:r></w:p>
+    <w:p><w:r><w:t>   - Calls: llm_chain()</w:t></w:r></w:p>
+
+    <!-- Complete Function Reference -->
+    <w:p><w:r><w:t style="Heading2">3. Complete Function Reference</w:t></w:r></w:p>
+    <w:tbl>
+      <w:tr><w:tc><w:p><w:r><w:t>Function</w:t></w:r></w:p></w:tc>
+            <w:tc><w:p><w:r><w:t>File</w:t></w:r></w:p></w:tc>
+            <w:tc><w:p><w:r><w:t>Parameters</w:t></w:r></w:p></w:tc></w:tr>
+      <w:tr><w:tc><w:p><w:r><w:t>generate_jwt_token()</w:t></w:r></w:p></w:tc>
+            <w:tc><w:p><w:r><w:t>auth.py</w:t></w:r></w:p></w:tc>
+            <w:tc><w:p><w:r><w:t>user: User object</w:t></w:r></w:p></w:tc></w:tr>
+      <w:tr><w:tc><w:p><w:r><w:t>initialize_agent()</w:t></w:r></w:p></w:tc>
+            <w:tc><w:p><w:r><w:t>rule_based_agent_pipeline.py</w:t></w:r></w:p></w:tc>
+            <w:tc><w:p><w:r><w:t>tools: List[Tool], llm: BaseLLM</w:t></w:r></w:p></w:tc></w:tr>
+    </w:tbl>
+
+    <!-- Deployment Details -->
+    <w:p><w:r><w:t style="Heading1">4. Deployment Process</w:t></w:r></w:p>
+    <w:p><w:r><w:t>1. AWS EC2 Setup:</w:t></w:r></w:p>
+    <w:p><w:r><w:t>   - Launch t2.micro instance</w:t></w:r></w:p>
+    <w:p><w:r><w:t>   - Install dependencies (Node, Python, Nginx)</w:t></w:r></w:p>
+    <w:p><w:r><w:t>   - Configure production.ini</w:t></w:r></w:p>
+  </w:body>
+</w:document>

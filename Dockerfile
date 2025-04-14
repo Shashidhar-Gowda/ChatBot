@@ -11,7 +11,7 @@ RUN npm run build
 FROM python:3.9 AS backend
 
 WORKDIR /app/backend
-COPY backend/requirements.txt ./
+COPY requirements.txt ./
 RUN pip install -r requirements.txt
 COPY backend/ ./
 

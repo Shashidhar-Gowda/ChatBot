@@ -7,7 +7,7 @@ RUN npm install
 COPY react\ frontend/ ./
 RUN npm run build
 
-# Stage 2: Setup Django backend
+
 FROM python:3.11-slim AS backend-build
 
 ENV PYTHONDONTWRITEBYTECODE 1

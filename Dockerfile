@@ -2,20 +2,20 @@
 FROM node:18-alpine AS frontend-build
 
 WORKDIR /app/frontend
-COPY react\ frontend/package.json react\ frontend/package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm install
-COPY react\ frontend/ ./
+COPY frontend/ ./
 RUN npm run build
 
-
+# Stage 2: Setup Django backend
 FROM python:3.11-slim AS backend-build
 
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app/backend
 
-COPY react\ frontend/requirements.txt ./
+COPY frontend/requirements.txt ./
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
@@ -35,12 +35,9 @@ COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
 # Copy backend app
 COPY --from=backend-build /app/backend /app/backend
 
-# Copy Nginx config (optional, can be added later)
-# COPY nginx.conf /etc/nginx/nginx.conf
-
 # Expose ports
 EXPOSE 80
 EXPOSE 8000
 
 # Start Gunicorn and Nginx
-CMD sh -c "gunicorn backend.wsgi:application --bind 0.0.0.0:8000 & nginx -g 'daemon off;'"
+CMD ["sh", "-c", "gunicorn backend.wsgi:application --bind 0.0.0.0:8000 & nginx -g 'daemon off;'"]

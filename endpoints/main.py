@@ -107,27 +107,61 @@ async def chat_with_llm(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"LLM error: {str(e)}")
 
+from endpoints.tools import AnalysisTools
+import pandas as pd
+from io import StringIO, BytesIO
+
 @router.post("/api/ask-file")
-async def ask_file(prompt: str = Form(...), file: UploadFile = Form(...), token=Depends(security)):
-    with NamedTemporaryFile(delete=False) as tmp:
-        shutil.copyfileobj(file.file, tmp)
-        tmp_path = tmp.name
-
-    if file.filename.endswith(".csv"):
-        loader = CSVLoader(file_path=tmp_path)
-    elif file.filename.endswith(".pdf"):
-        loader = PyPDFLoader(file_path=tmp_path)
-    else:
-        return JSONResponse({"error": "Unsupported file format"}, status_code=400)
-
-    docs = loader.load()
-    embeddings = HuggingFaceEmbeddings()
-    vectorstore = FAISS.from_documents(docs, embeddings)
-    docs_similar = vectorstore.similarity_search(prompt)
-    chain = load_qa_chain(llm, chain_type="stuff")
-    response = chain.run(input_documents=docs_similar, question=prompt)
-
-    return {"answer": response}
+async def ask_file(prompt: str = Form(...), file: UploadFile = File(...), token=Depends(security)):
+    try:
+        # Read file content directly into memory
+        contents = await file.read()
+        
+        # Process based on file type
+        if file.filename.endswith('.csv'):
+            df = pd.read_csv(BytesIO(contents))
+        elif file.filename.endswith('.json'):
+            df = pd.read_json(BytesIO(contents))
+        elif file.filename.endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(BytesIO(contents))
+        else:
+            return JSONResponse(
+                {"error": "Unsupported file format. Use CSV, JSON or Excel"},
+                status_code=400
+            )
+        
+        # Convert DataFrame to dict for analysis
+        data_dict = df.to_dict(orient='records')
+        
+        # Initialize analysis tools with direct DataFrame
+        tools = AnalysisTools()
+        tools.df = df  # Store DataFrame reference
+        
+        # Process based on prompt intent
+        if "statistics" in prompt.lower() or "describe" in prompt.lower():
+            result = tools.describe_data(data_str)
+        elif "correlation" in prompt.lower():
+            # Extract column names from prompt if specified
+            columns = [col for col in df.columns if col.lower() in prompt.lower()]
+            result = tools.correlation_analysis(
+                data_str,
+                x_col=columns[0] if len(columns) > 0 else df.columns[0],
+                y_col=columns[1] if len(columns) > 1 else df.columns[1]
+            )
+        else:
+            # Default analysis
+            result = tools.describe_data(data_str)
+        
+        return {
+            "answer": f"Analysis of {file.filename}:\n{result}",
+            "raw_data": result
+        }
+        
+    except Exception as e:
+        return JSONResponse(
+            {"error": f"Analysis failed: {str(e)}"},
+            status_code=500
+        )
 
 @app.post("/api/reset_chat")
 async def reset_chat(token: str = Depends(verify_token)):

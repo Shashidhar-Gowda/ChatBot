@@ -44,7 +44,11 @@ def get_ai_response_view(request):
             prompt=prompt,
             response=ai_response
         )
-        
+        print("AI Response Structure:", {
+            'raw_response': ai_response,
+            'type': type(ai_response),
+            'is_dict': isinstance(ai_response, dict)
+        })
         return Response({
             'response': ai_response,
             'status': 'success'
@@ -129,6 +133,11 @@ def get_chats(request):
     chats = ChatHistory.objects.filter(user=user).order_by('-timestamp')  # newest first
     serializer = ChatHistorySerializer(chats, many=True)
     return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def verify_token(request):
+    return Response({"status": "success", "message": "Token is valid."})
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])

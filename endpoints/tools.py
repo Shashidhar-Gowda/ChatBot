@@ -4,50 +4,50 @@ from io import StringIO
 
 class AnalysisTools:
     @staticmethod
-    def describe_data(data: str, timeout_sec: int = 30):
-        """Enhanced descriptive statistics with timeout handling"""
+    def describe_data(data, timeout_sec: int = 30, **kwargs):
+        """Enhanced descriptive statistics with mixed data support"""
         try:
             import pandas as pd
-            from io import StringIO
+            print("[DEBUG] Raw input to describe_data:", data)
             
-            # Handle both direct data and file paths
+            # Handle different input types
             if isinstance(data, pd.DataFrame):
                 df = data.copy()
-            elif os.path.exists(str(data)):  # It's a file path
-                # Process in chunks for memory efficiency
-                chunks = pd.read_csv(data, chunksize=50000)
-                df = pd.concat(chunks)
-            else:  # It's raw data
-                # For in-memory data, limit to first 1MB to prevent OOM
-                if len(data) > 1_000_000:
-                    data = data[:1_000_000]
-                    return {
-                        'status': 'warning',
-                        'message': 'Data truncated to first 1MB for processing'
-                    }
-                df = pd.read_csv(StringIO(data))
-            
-            # Ensure we have numeric columns
-            if len(df.columns) == 0:
+            elif isinstance(data, dict):  # JSON data
+                df = pd.DataFrame(data)
+            elif isinstance(data, str):  # JSON string
+                df = pd.read_json(StringIO(data))
+            else:
                 return {
                     'status': 'error',
-                    'message': 'No columns found in data',
-                    'solution': 'Check data format and column headers'
+                    'message': 'Unsupported data format',
+                    'solution': 'Provide DataFrame, dict or JSON string'
                 }
                 
-            numeric_cols = df.select_dtypes(include=['number']).columns
-            if len(numeric_cols) == 0:
-                return {
-                    'status': 'error', 
-                    'message': 'No numeric columns found',
-                    'solution': 'Try with different columns or check data types'
-                }
+            print("[DEBUG] Parsed DataFrame:", df.head())
+            
+            # Handle empty data
+            if len(df.columns) == 0:
+                return {'status': 'error', 'message': 'No columns found'}
                 
-            basic_stats = df[numeric_cols].describe().to_dict()
+            # Enhanced data type handling
+            if kwargs.get('data_type_check', 'auto') == 'auto':
+                stats = df.describe(include='all').to_dict()
+            else:
+                stats = df.describe().to_dict()
+                
+            # Calculate value counts for categorical data
+            cat_cols = df.select_dtypes(exclude=['number']).columns
+            value_counts = {}
+            for col in cat_cols:
+                value_counts[col] = df[col].value_counts().to_dict()
             
             return {
                 'status': 'success',
-                'result': basic_stats,
+                'result': {
+                    'describe': stats,
+                    'value_counts': value_counts
+                },
                 'message': "Analysis completed successfully"
             }
             
@@ -59,10 +59,27 @@ class AnalysisTools:
             }
 
     @staticmethod
-    def correlation_analysis(data: str = None, x_col: str = None, y_col: str = None):
-        """Calculate correlation between two numeric columns"""
+    def correlation_analysis(data: str = None, x_col: str = None, y_col: str = None, **kwargs):
+        """Enhanced correlation analysis with mixed data support"""
         try:
             df = pd.read_csv(StringIO(data))
+            
+            # Handle non-numeric data
+            if not pd.api.types.is_numeric_dtype(df[x_col]) or not pd.api.types.is_numeric_dtype(df[y_col]):
+                if kwargs.get('fallback_strategy') == 'crosstab':
+                    crosstab = pd.crosstab(df[x_col], df[y_col])
+                    return {
+                        'status': 'success',
+                        'result': 'crosstab',
+                        'table': crosstab.to_dict(),
+                        'message': 'Used contingency table for categorical data'
+                    }
+                return {
+                    'status': 'error',
+                    'message': 'Columns must be numeric for correlation',
+                    'solution': 'Try with numeric columns or use fallback_strategy="crosstab"'
+                }
+            
             corr = df[x_col].corr(df[y_col])
             return {
                 'status': 'success',
@@ -72,27 +89,67 @@ class AnalysisTools:
         except Exception as e:
             return {
                 'status': 'error',
-                'message': str(e)
+                'message': str(e),
+                'solution': 'Check data format and column types'
             }
 
     @staticmethod
-    def linear_regression(data: str, x_col: str, y_col: str):
-        """Perform linear regression"""
+    def linear_regression(data, x_col: str = None, y_col: str = None, **kwargs):
+        """Enhanced linear regression with data validation and guidance"""
         try:
-            df = pd.read_csv(StringIO(data))
+            # Handle different input types
+            if isinstance(data, pd.DataFrame):
+                df = data.copy()
+            elif isinstance(data, str):
+                df = pd.read_csv(StringIO(data))
+            elif isinstance(data, dict):
+                df = pd.DataFrame(data)
+            else:
+                return {
+                    'status': 'error',
+                    'message': 'Unsupported data format',
+                    'solution': 'Provide CSV string, DataFrame or dict'
+                }
+
+            # Validate columns
+            if x_col is None or y_col is None:
+                return {
+                    'status': 'input_required',
+                    'message': 'Please specify both x and y columns',
+                    'available_columns': list(df.columns),
+                    'suggested_columns': ['orders_all_np'] if 'orders_all_np' in df.columns else None
+                }
+
+            if x_col not in df.columns or y_col not in df.columns:
+                return {
+                    'status': 'error',
+                    'message': 'Specified columns not found',
+                    'available_columns': list(df.columns)
+                }
+
+            if x_col == y_col:
+                return {
+                    'status': 'error',
+                    'message': 'Cannot regress a column on itself'
+                }
+
+            # Perform regression
             from sklearn.linear_model import LinearRegression
             model = LinearRegression()
             model.fit(df[[x_col]], df[y_col])
+            
             return {
                 'status': 'success',
                 'slope': float(model.coef_[0]),
                 'intercept': float(model.intercept_),
-                'r_squared': float(model.score(df[[x_col]], df[y_col]))
+                'r_squared': float(model.score(df[[x_col]], df[y_col])),
+                'equation': f"{y_col} = {model.coef_[0]:.2f}*{x_col} + {model.intercept_:.2f}"
             }
         except Exception as e:
             return {
                 'status': 'error',
-                'message': str(e)
+                'message': str(e),
+                'solution': 'Check data quality and column types'
             }
 
     @staticmethod

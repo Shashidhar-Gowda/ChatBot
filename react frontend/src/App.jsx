@@ -4,8 +4,11 @@ import ChatBox from "./components/Home";
 import AskFile from "./components/AskFile";
 import Dashboard from "./components/DashBoard"; 
 import PrivateRoute from "./components/PrivateRoute.jsx";
+import { useState } from "react";
 
 function App() {
+  const [messages, setMessages] = useState([]);
+
   return (
     <Routes>
       <Route path="/" element={<Login />} />
@@ -13,7 +16,7 @@ function App() {
         path="/chat"
         element={
           <PrivateRoute>
-            <ChatBox />
+            <ChatBox messages={messages} />
           </PrivateRoute>
         }
       />
@@ -29,7 +32,7 @@ function App() {
         path="/dashboard"
         element={
           <PrivateRoute>
-            <Dashboard />
+            <Dashboard setMessages={setMessages} />
           </PrivateRoute>
         }
       />

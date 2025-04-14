@@ -21,3 +21,43 @@ media/
 # React
 node_modules/
 build/
+# Ignore .gitignore files
+.gitignore
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# Virtual envs
+venv/
+env/
+
+# Django
+*.log
+*.sqlite3
+staticfiles/
+media/
+
+# VSCode
+.vscode/
+
+# React
+node_modules/
+build/
+
+# IDEs and editors
+.idea/
+*.iml
+*.vs
+
+# Miscellaneous
+*.bak
+*.tmp
+*.swp
+*.swo# Logs
+logs/
+*.loglogs/
+*.log

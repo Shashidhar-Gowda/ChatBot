@@ -1,54 +1,138 @@
-from langchain.tools import tool
-import pandas as pd
-import numpy as np
+# tools.py
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.chat_history import InMemoryChatMessageHistory
 import seaborn as sns
 import matplotlib.pyplot as plt
-from sklearn.linear_model import LinearRegression
-from io import BytesIO
+import pandas as pd
 import base64
+from io import BytesIO
 
-@tool(description="Preprocesses the data by removing nulls and trimming string columns.")
-def get_preprocessing_tool():
-    def preprocess_data(df):
-        df = df.dropna()
-        df.columns = [col.strip() for col in df.columns]
-        for col in df.select_dtypes(include=['object']).columns:
-            df[col] = df[col].str.strip()
-        return df
-    return preprocess_data
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error, r2_score
 
-@tool(description="Performs Pearson and Spearman correlation analysis on numeric columns.")
-def get_correlation_tool():
-    def correlation_analysis(df):
-        numeric_df = df.select_dtypes(include=[np.number])
-        pearson_corr = numeric_df.corr(method='pearson')
-        spearman_corr = numeric_df.corr(method='spearman')
-        return f"Pearson Correlation:\n{pearson_corr}\n\nSpearman Correlation:\n{spearman_corr}"
-    return correlation_analysis
+# Prompt-driven preprocessing
+def get_preprocessing_tool(llm):
+    def tool(df):
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a data preprocessing assistant. Decide what preprocessing is needed for the columns: missing values, encoding, dropping, etc. Return a summary of operations."),
+            ("human", "{columns}")
+        ])
 
-@tool(description="Runs a linear regression to predict a target column using numeric features.")
-def get_regression_tool():
-    def linear_regression(df, target_column):
-        df = df.select_dtypes(include=[np.number])
-        if target_column not in df.columns:
-            return f"Target column '{target_column}' not found in numeric columns."
-        X = df.drop(columns=[target_column])
-        y = df[target_column]
+        chain = RunnableWithMessageHistory(
+            prompt | llm,
+            lambda session_id: InMemoryChatMessageHistory(),
+            input_messages_key="columns",
+            history_messages_key="history"
+        )
+
+        result = chain.invoke({"columns": ', '.join(df.columns)}, config={"configurable": {"session_id": "preprocessing"}}).content
+        print("[Preprocessing LLM Plan]:", result)
+        return df.dropna()
+    return tool
+
+# Prompt-driven correlation tool
+def get_correlation_tool(llm):
+    def tool(df):
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a correlation analysis expert. Choose columns for correlation from: {columns}. Return pairs you would analyze."),
+            ("human", "Pick top correlated columns.")
+        ])
+
+        chain = RunnableWithMessageHistory(
+            prompt | llm,
+            lambda session_id: InMemoryChatMessageHistory(),
+            input_messages_key="columns",
+            history_messages_key="history"
+        )
+
+        pairs = chain.invoke({"columns": ', '.join(df.select_dtypes(include='number').columns)}, config={"configurable": {"session_id": "correlation"}}).content
+        print("[Correlation Pairs LLM Suggestion]:", pairs)
+
+        corr = df.select_dtypes(include='number').corr()
+        return str(corr)
+    return tool
+
+# Prompt-driven regression tool
+def get_regression_tool(llm):
+    def tool(df):
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a regression assistant. From columns: {columns}, select a target and appropriate features for linear regression. Respond with a JSON or string plan."),
+            ("human", "Select target and features")
+        ])
+
+        chain = RunnableWithMessageHistory(
+            prompt | llm,
+            lambda session_id: InMemoryChatMessageHistory(),
+            input_messages_key="columns",
+            history_messages_key="history"
+        )
+
+        columns = df.select_dtypes(include='number').columns
+        result = chain.invoke({"columns": ', '.join(columns)}, config={"configurable": {"session_id": "regression"}}).content
+        print("[Regression Plan]:", result)
+
+        # Fallback example logic: use last column as target, others as features
+        target = columns[-1]
+        features = columns[:-1]
+
+        X = df[features]
+        y = df[target]
+
         model = LinearRegression()
         model.fit(X, y)
-        return f"Coefficients: {dict(zip(X.columns, model.coef_))}\nIntercept: {model.intercept_}\nR² Score: {model.score(X, y)}"
-    return linear_regression
+        predictions = model.predict(X)
 
-@tool(description="Creates a pairplot of numeric variables and returns a base64-encoded PNG.")
-def get_visualization_tool():
-    def visualize_data(df):
-        numeric_df = df.select_dtypes(include=[np.number])
-        sns.set(style="ticks")
-        plot = sns.pairplot(numeric_df)
-        buf = BytesIO()
-        plot.savefig(buf, format="png")
-        buf.seek(0)
-        img_base64 = base64.b64encode(buf.read()).decode("utf-8")
-        buf.close()
-        return f"data:image/png;base64,{img_base64}"
-    return visualize_data
+        mse = mean_squared_error(y, predictions)
+        r2 = r2_score(y, predictions)
+
+        return f"Model trained using features: {features.tolist()} -> Target: {target}\nMSE: {mse:.2f}, R²: {r2:.2f}"
+    return tool
+
+# Prompt-driven visualization tool
+def get_visualization_tool(llm):
+    def tool(df):
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a visualization assistant. Based on the dataset columns: {columns}, suggest a chart to plot. Return column names for x and y."),
+            ("human", "Which columns to plot?")
+        ])
+
+        chain = RunnableWithMessageHistory(
+            prompt | llm,
+            lambda session_id: InMemoryChatMessageHistory(),
+            input_messages_key="columns",
+            history_messages_key="history"
+        )
+
+        result = chain.invoke({"columns": ', '.join(df.columns)}, config={"configurable": {"session_id": "visualization"}}).content
+        print("[Visualization LLM Suggestion]:", result)
+
+        numeric_cols = df.select_dtypes(include='number').columns
+        if len(numeric_cols) >= 2:
+            x, y = numeric_cols[:2]
+            plt.figure()
+            sns.scatterplot(data=df, x=x, y=y)
+            buf = BytesIO()
+            plt.savefig(buf, format='png')
+            buf.seek(0)
+            image_base64 = base64.b64encode(buf.read()).decode('utf-8')
+            plt.close()
+            return image_base64
+        return "Not enough numeric columns to plot."
+    return tool
+
+# Prompt-driven summarization tool
+def get_summarization_tool():
+    def tool(df, llm):
+        summary = df.describe().to_string() + "\n\n" + df.head().to_string()
+
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a data summarization expert. Summarize this data for a human-readable report."),
+            ("human", "{summary}")
+        ])
+
+        chain = prompt | llm
+        result = chain.invoke({"summary": summary})
+        return result.content
+
+    return tool

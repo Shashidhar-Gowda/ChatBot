@@ -1,0 +1,7 @@
+langchain-groq
+langchain-core
+pandas
+scikit-learn
+seaborn
+matplotlib
+python-dotenv

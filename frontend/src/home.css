@@ -9,18 +9,18 @@
 :root {
   --primary: #10a37f;
   --primary-dark: #0d8a6d;
-  --sidebar-bg: #000000;
+  --sidebar-bg: #1E1E1E; /* Changed from #000000 */
   --sidebar-text: #ffffff;
-  --sidebar-hover: #1a1a1a;
-  --chat-bg: #000000;
+  --sidebar-hover: #2a2a2e; /* Slightly adjusted hover for new bg */
+  --chat-bg: #1E1E1E; /* Changed from #000000 */
   --chat-text: #ffffff;
-  --user-bg: #1a1a1a; /* Slightly lighter for user */
-  --bot-bg: #0d0d0d; /* Slightly darker for bot */
-  --input-bg: #1a1a1a;
-  --border: #333333;
-  --code-bg: #1a1a1a;
-  --error: #ff5252; /* Brighter error red */
-  --error-bg: #2a0f0f; /* Dark red background for error message */
+  --user-bg: #2a2d2e; /* Slightly adjusted user bg */
+  --bot-bg: #252526; /* Slightly adjusted bot bg */
+  --input-bg: #2a2d2e; /* Slightly adjusted input bg */
+  --border: #333333; /* Kept same, might need adjustment */
+  --code-bg: #2a2d2e; /* Slightly adjusted code bg */
+  --error: #ff5252;
+  --error-bg: #2a0f0f;
   --text-light: #999999;
 }
 
@@ -34,7 +34,7 @@
 
 .sidebar {
   width: 260px;
-  background: var(--sidebar-bg);
+  background: var(--sidebar-bg); /* Uses updated variable */
   color: var(--sidebar-text);
   display: flex;
   flex-direction: column;
@@ -59,7 +59,7 @@
 }
 
 .new-chat-btn:hover {
-  background: var(--sidebar-hover);
+  background: var(--sidebar-hover); /* Uses updated variable */
 }
 
 .conversations-list {
@@ -78,7 +78,7 @@
 }
 
 .conversation-item:hover {
-  background: var(--sidebar-hover);
+  background: var(--sidebar-hover); /* Uses updated variable */
 }
 
 .conversation-name {
@@ -98,7 +98,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: var(--chat-bg);
+  background: var(--chat-bg); /* Uses updated variable */
   color: var(--chat-text);
   position: relative; /* Needed for input container positioning */
   overflow: hidden; /* Prevent content overflow */
@@ -125,7 +125,7 @@
 }
 
 .chat-message.user {
-  background: var(--user-bg);
+  background: var(--user-bg); /* Uses updated variable */
   align-self: flex-end;
   border-radius: 18px 18px 0 18px; /* User bubble shape */
   border: 1px solid rgba(255, 255, 255, 0.05); /* Subtle border */
@@ -133,7 +133,7 @@
 }
 
 .chat-message.bot {
-  background: var(--bot-bg);
+  background: var(--bot-bg); /* Uses updated variable */
   align-self: flex-start;
   border-radius: 18px 18px 18px 0; /* Bot bubble shape */
   border: 1px solid rgba(0, 0, 0, 0.1); /* Subtle border */
@@ -157,7 +157,10 @@
 /* Ensure paragraphs inside messages don't have extra margins */
 .message-content p {
   margin: 0;
+  white-space: pre-wrap; /* Make sure this is here to handle \n */
+  word-wrap: break-word;
 }
+
 
 .follow-up-questions {
   margin-top: 12px; /* Space above follow-ups */
@@ -177,7 +180,7 @@
   width: calc(100% - 2px); /* Account for border */
   padding: 0.6rem 0.8rem; /* Adjust padding */
   margin: 4px 0; /* Space between buttons */
-  background: var(--input-bg);
+  background: var(--input-bg); /* Uses updated variable */
   border: 1px solid var(--border);
   border-radius: 6px; /* Slightly rounded corners */
   color: var(--chat-text);
@@ -188,7 +191,7 @@
 }
 
 .follow-up-btn:hover {
-  background: var(--sidebar-hover);
+  background: var(--sidebar-hover); /* Uses updated variable */
   border-color: var(--primary);
 }
 
@@ -204,19 +207,14 @@
 
 .chat-message.error .message-content p {
     color: var(--error); /* Ensure paragraph text is red */
+    white-space: pre-wrap; /* Also apply here */
+    word-wrap: break-word;
 }
 
 
-/* --- REMOVE these unused CSS rules --- */
-/*
-.intent-container { ... }
-.intent-badge { ... }
-.avatar { ... }
-*/
-
 /* Code block styling (if you plan to render code) */
 .message-content pre {
-  background: var(--code-bg);
+  background: var(--code-bg); /* Uses updated variable */
   padding: 1rem;
   border-radius: 0.5rem;
   overflow-x: auto;
@@ -226,7 +224,7 @@
 
 .message-content code:not(pre > code) { /* Inline code */
   font-family: 'Courier New', monospace;
-  background: var(--code-bg);
+  background: var(--code-bg); /* Uses updated variable */
   padding: 0.2rem 0.4rem;
   border-radius: 0.25rem;
   font-size: 0.9em;
@@ -236,7 +234,7 @@
 /* ===== Input Area ===== */
 .chat-input-container {
   padding: 1rem 1.5rem; /* Match chat log horizontal padding */
-  background: var(--chat-bg);
+  background: var(--chat-bg); /* Uses updated variable */
   border-top: 1px solid var(--border);
   flex-shrink: 0; /* Prevent input area from shrinking */
 }
@@ -244,7 +242,7 @@
 .input-wrapper {
   display: flex;
   gap: 0.75rem; /* Slightly larger gap */
-  background: var(--input-bg); /* Input background */
+  background: var(--input-bg); /* Uses updated variable */
   border: 1px solid var(--border);
   border-radius: 0.75rem; /* More rounded input area */
   padding: 0.25rem 0.25rem 0.25rem 1rem; /* Padding around input/button */
@@ -351,7 +349,7 @@
   display: inline-flex; /* Use inline-flex */
   align-items: center;
   padding: 0.4rem 0.8rem; /* Adjust padding */
-  background: var(--input-bg);
+  background: var(--input-bg); /* Uses updated variable */
   border: 1px solid var(--border); /* Add border */
   border-radius: 6px; /* Match follow-up buttons */
   cursor: pointer;
@@ -367,7 +365,7 @@
 }
 
 .file-upload-button:hover {
-  background: var(--sidebar-hover);
+  background: var(--sidebar-hover); /* Uses updated variable */
   color: var(--chat-text); /* Darken text on hover */
   border-color: #555; /* Slightly darker border */
 }
@@ -392,7 +390,7 @@
 
 .chat-log::-webkit-scrollbar-track,
 .conversations-list::-webkit-scrollbar-track {
-  background: var(--bot-bg);
+  background: var(--bot-bg); /* Uses updated variable */
   border-radius: 3px;
 }
 

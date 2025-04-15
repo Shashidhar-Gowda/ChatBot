@@ -13,6 +13,7 @@ from rest_framework.decorators import api_view, permission_classes
 from .models import ChatHistory
 from .serializers import ChatHistorySerializer
 from endpoints.llm_chain import get_bot_response  # Import the AI response function directly
+from endpoints.mongo_chat_history import save_chat_history as mongo_save_chat_history, get_chat_history_by_user
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -38,12 +39,16 @@ def get_ai_response_view(request):
         # Get AI response with user context
         ai_response = get_bot_response(user_id, prompt)
         
-        # Save to chat history
+        # Save to chat history in Django ORM
         ChatHistory.objects.create(
             user=request.user,
             prompt=prompt,
             response=ai_response
         )
+        
+        # Save to chat history in MongoDB
+        mongo_save_chat_history(user_id, prompt, ai_response)
+        
         print("AI Response Structure:", {
             'raw_response': ai_response,
             'type': type(ai_response),
@@ -123,6 +128,8 @@ def save_chat_history(request):
 
     if prompt and response:
         ChatHistory.objects.create(user=user, prompt=prompt, response=response)
+        # Also save in MongoDB
+        mongo_save_chat_history(user.username, prompt, response)
         return Response({"message": "Chat saved successfully"})
     return Response({"error": "Missing data"}, status=400)
 
@@ -130,9 +137,18 @@ def save_chat_history(request):
 @permission_classes([IsAuthenticated])
 def get_chats(request):
     user = request.user
-    chats = ChatHistory.objects.filter(user=user).order_by('-timestamp')  # newest first
-    serializer = ChatHistorySerializer(chats, many=True)
-    return Response(serializer.data)
+    # Fetch chat history from MongoDB
+    mongo_chats = get_chat_history_by_user(user.username)
+    print(f"MongoDB chats raw data for user {user.username}: {mongo_chats}")
+    # Format MongoDB chat history for frontend
+    formatted_chats = []
+    for chat in mongo_chats:
+        formatted_chats.append({
+            "prompt": chat.get("prompt", ""),
+            "response": chat.get("response", ""),
+            "timestamp": chat.get("timestamp").isoformat() if chat.get("timestamp") else None
+        })
+    return Response(formatted_chats)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

@@ -45,6 +45,9 @@ app.add_middleware(
 UPLOAD_DIR = "uploaded_files"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# Include the router to register its routes with the app
+app.include_router(router, prefix="/api")
+
 class ChatRequest(BaseModel):
     prompt: str
 

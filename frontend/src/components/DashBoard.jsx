@@ -1,8 +1,9 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 
-const Dashboard = ({ setMessages }) => {
+const Dashboard = () => {
   const token = localStorage.getItem("token");
+  const [chatHistory, setChatHistory] = useState([]);
 
   useEffect(() => {
     const fetchChats = async () => {
@@ -12,19 +13,37 @@ const Dashboard = ({ setMessages }) => {
             Authorization: `Bearer ${token}`,
           },
         });
-        setMessages(res.data); // Pass the fetched chats to the Home component
+        setChatHistory(res.data);
       } catch (error) {
         console.error("Error fetching chat history:", error);
       }
     };
 
     fetchChats();
-  }, [setMessages, token]);
+  }, [token]);
 
   return (
     <div>
       <h2>Your Chat History</h2>
-      {/* Optionally render chat history here if needed */}
+      {chatHistory.length === 0 ? (
+        <p>No chat history found.</p>
+      ) : (
+        <ul>
+          {chatHistory.map((chat, index) => (
+            <li key={index} style={{ marginBottom: "1rem" }}>
+              <strong>Prompt:</strong> {chat.prompt} <br />
+              <strong>Response:</strong> {typeof chat.response === 'object' ? JSON.stringify(chat.response) : chat.response} <br />
+              <small>
+                <em>
+                  {chat.timestamp
+                    ? new Date(chat.timestamp).toLocaleString()
+                    : "No timestamp"}
+                </em>
+              </small>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 };

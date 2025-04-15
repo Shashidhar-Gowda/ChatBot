@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./components/Login.jsx";
 import ChatBox from "./components/Home.jsx";
 import AskFile from "./components/AskFile.jsx";
@@ -11,7 +11,8 @@ function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<Login />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/" element={<Navigate to="/login" replace />} />
       <Route
         path="/chat"
         element={
@@ -32,7 +33,7 @@ function App() {
         path="/dashboard"
         element={
           <PrivateRoute>
-            <Dashboard setMessages={setMessages} />
+            <Dashboard />
           </PrivateRoute>
         }
       />

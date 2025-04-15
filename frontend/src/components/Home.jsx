@@ -76,16 +76,16 @@ const Home = () => {
 
   // --- sendMessage (keep as is, response structure is already handled) ---
   const sendMessage = async () => {
-    if (!prompt.trim() && !selectedFile) return; // Prevent empty send
+    console.log("sendMessage called with prompt:", prompt);
+    if (!prompt.trim() && !selectedFile) {
+      console.log("Empty prompt and no file selected, aborting send.");
+      return; // Prevent empty send
+    }
 
     setIsLoading(true);
     const userMessage = { text: prompt, isUser: true };
-    // Clear prompt only, file handling is separate
     setPrompt('');
-
-    // Add user message to chat log
     setChatLog(prev => [...prev, userMessage]);
-
 
     try {
       const token = document.cookie.split('; ')
@@ -93,7 +93,7 @@ const Home = () => {
         ?.split('=')[1] || localStorage.getItem('token');
 
       if (!token) {
-        navigate('/login'); // Use navigate instead of window.location
+        navigate('/login');
         return;
       }
 
@@ -103,30 +103,27 @@ const Home = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        // credentials: 'include', // Usually needed if backend sets cookies
-        body: JSON.stringify({ prompt }) // Send current prompt
+        body: JSON.stringify({ prompt })
       });
 
-      // Check for non-JSON or error responses
+      console.log("API response status:", response.status);
+
       if (!response.ok) {
-          // Handle HTTP errors (like 401 Unauthorized, 500 Server Error)
           if (response.status === 401) {
              navigate('/login');
              throw new Error("Authentication failed. Please login again.");
           }
-          // Try to get error message from response body if possible
           let errorData;
           try {
               errorData = await response.json();
           } catch (jsonError) {
-              // If response is not JSON
               throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
           }
           throw new Error(errorData?.error || errorData?.detail || `Request failed with status ${response.status}`);
       }
 
-
       const data = await response.json();
+      console.log("API response data:", data);
 
       if (data.status === 'success') {
           const responseObj = typeof data.response === 'object' ? data.response : {};
@@ -134,18 +131,21 @@ const Home = () => {
           const intent = responseObj.intent || null;
           const followUp = Array.isArray(responseObj.follow_up) ? responseObj.follow_up : [];
 
-          // --- Name formatting (keep as is) ---
-           let formattedText = responseText;
-           if (typeof responseText === 'string') {
-               if (responseText.includes("I'll remember your name is ")) {
-                   const name = responseText.replace("I'll remember your name is ", "").trim();
-                   formattedText = `Got it! I'll call you ${name}`;
-               }
-               else if (responseText.startsWith("Your name is ")) {
-                   const name = responseText.replace("Your name is ", "").trim();
-                   formattedText = `Yes, your name is ${name}`;
-               }
-           }
+          if (typeof responseText === 'string') {
+            responseText = responseText.replace(/<think>[\s\S]*?<\/think>\n*/, '').trim();
+          }
+
+          let formattedText = responseText;
+          if (typeof responseText === 'string') {
+              if (responseText.includes("I'll remember your name is ")) {
+                  const name = responseText.replace("I'll remember your name is ", "").trim();
+                  formattedText = `Got it! I'll call you ${name}`;
+              }
+              else if (responseText.startsWith("Your name is ")) {
+                  const name = responseText.replace("Your name is ", "").trim();
+                  formattedText = `Yes, your name is ${name}`;
+              }
+          }
 
           const botResponse = {
             text: formattedText,
@@ -156,7 +156,6 @@ const Home = () => {
 
           setChatLog(prev => [...prev, botResponse]);
       } else {
-          // Handle errors reported in the JSON payload (status != 'success')
           throw new Error(data.error || data.detail || 'API returned an error');
       }
     } catch (error) {

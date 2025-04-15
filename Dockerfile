@@ -19,11 +19,10 @@ COPY backend/ ./backend
 COPY endpoints/ ./endpoints
 # Ensure STATIC_ROOT is set in your Django settings.py, e.g., STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Assume STATIC_ROOT resolves to /app/backend/staticfiles
-RUN python backend/manage.py collectstatic --noinput --clear
+RUN python manage.py collectstatic --noinput --clear
 
 # Stage 3: Final image with Nginx, Supervisor, Python runtime, and application
 FROM nginx:alpine
-LABEL maintainer="Your Name <your.email@example.com>" # Optional: Add maintainer info
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

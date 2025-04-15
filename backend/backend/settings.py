@@ -23,6 +23,15 @@ sys.path.append(os.path.join(BASE_DIR, '../endpoints'))  # Add endpoints directl
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+import os
+
+# Static files (CSS, JavaScript, images)
+# https://docs.djangoproject.com/en/stable/ref/settings/#static-root
+STATIC_URL = '/static/'
+
+# Ensure this is set to a valid path, it should be an absolute path to the directory
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')  # Or set to '/app/backend/staticfiles' for your Docker setup
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/

@@ -16,20 +16,24 @@ const Login = () => {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    try {
-      const res = await axios.post("http://127.0.0.1:8000/api/login/", {
-        email,
-        password,
-      });
-  
-      const { access, refresh } = res.data;
-      localStorage.setItem("token", access);
-      document.cookie = `token=${access}; path=/; max-age=86400`;
-      
-      navigate("/chat");
-    } catch (error) {
-      alert("Invalid credentials");
-    }
+      try {
+        const res = await axios.post("http://loaclhost:8001/api/login/", {
+          email,
+          password,
+        });
+    
+        const { access, refresh } = res.data;
+        localStorage.setItem("token", access);
+        document.cookie = `token=${access}; path=/; max-age=86400`;
+        
+        navigate("/chat");
+      } catch (error) {
+        if (error.response && error.response.data && error.response.data.error) {
+          alert(`Login failed: ${error.response.data.error}`);
+        } else {
+          alert("Login failed: Unknown error");
+        }
+      }
   };
 
   return (

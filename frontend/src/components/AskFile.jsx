@@ -1,4 +1,4 @@
-// components/AskFile.js
+// components/AskFile.jsx
 import React, { useState, useRef } from "react";
 import axios from "axios";
 import "./AskFile.css";
@@ -19,6 +19,10 @@ const AskFile = () => {
       setError("Please select a file first");
       return;
     }
+    if (!prompt.trim()) {
+      setError("Please enter an analysis prompt before uploading");
+      return;
+    }
 
     setIsLoading(true);
     setError("");
@@ -30,32 +34,18 @@ const AskFile = () => {
     formData.append("prompt", prompt);
 
     try {
-      const res = await axios.post("http://127.0.0.1:8001/api/ask-file", formData, {
+      const res = await axios.post("http://127.0.0.1:8001/api/ask-file/", formData, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
         },
       });
 
-      const newEntry = {
-        prompt: prompt,
-        answer: res.data.answer,
-        timestamp: new Date().toISOString(),
-        file: file.name
-      };
-      setChatHistory([...chatHistory, newEntry]);
-      setCurrentAnswer(res.data.answer);
-      setSuccess("File uploaded successfully!");
+      setSuccess("File uploaded and saved successfully!");
+      setChatHistory([...chatHistory, { prompt: prompt, file: file.name, timestamp: new Date().toISOString() }]);
+      setCurrentAnswer("");
+      setError("");
       
-      // Auto-scroll to bottom when new answer arrives
-      setTimeout(() => {
-        if (answerBoxRef.current) {
-          answerBoxRef.current.scrollIntoView({ 
-            behavior: 'smooth',
-            block: 'nearest'
-          });
-        }
-      }, 100);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to upload file");
       console.error(err);
@@ -71,8 +61,8 @@ const AskFile = () => {
         setError("File size exceeds 10MB limit");
         return;
       }
-      if (!selectedFile.name.match(/\.(csv|xlsx?|json)$/i)) {
-        setError("Only CSV, Excel, and JSON files are allowed");
+      if (!selectedFile.name.match(/\.(csv|xlsx?|json|txt)$/i)) {
+        setError("Only CSV, Excel, JSON, and TXT files are allowed");
         return;
       }
       setFile(selectedFile);
@@ -88,7 +78,7 @@ const AskFile = () => {
         <label className="file-upload-label">
           <input 
             type="file"
-            accept=".csv,.xlsx,.xls,.json"
+            accept=".csv,.xlsx,.xls,.json,.txt"
             onChange={handleFileChange}
             className="file-input"
           />
@@ -99,9 +89,9 @@ const AskFile = () => {
         <div className="file-requirements">
           <p>Requirements:</p>
           <ul>
-            <li>CSV or Excel format</li>
+            <li>CSV, Excel, JSON, or TXT format</li>
             <li>Max size: 10MB</li>
-            <li>Should contain header row</li>
+            <li>Should contain header row (if applicable)</li>
           </ul>
         </div>
       </div>
@@ -122,7 +112,7 @@ const AskFile = () => {
           disabled={isLoading || !file}
           className="upload-button"
         >
-          {isLoading ? "Processing..." : "Analyze"}
+          {isLoading ? "Uploading..." : "Upload"}
         </button>
         <button 
           className="new-chat-button"
@@ -146,9 +136,6 @@ const AskFile = () => {
             <div className="chat-prompt">
               <strong>You:</strong> {chat.prompt}
               {chat.file && <div className="chat-file">File: {chat.file}</div>}
-            </div>
-            <div className="chat-answer">
-              <strong>Analysis:</strong> {chat.answer}
             </div>
           </div>
         ))}

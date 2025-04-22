@@ -53,30 +53,24 @@ const Home = () => {
   }, [chatLog]);
 
   // --- handleFileUpload (keep as is, maybe update response format) ---
-   const handleFileUpload = (e) => {
+  const handleFileUpload = (e) => {
     const file = e.target.files[0];
-    if (!file) return;
-
-    setSelectedFile(file);
-    setIsLoading(true);
-    // Simulate upload processing and response
-    setTimeout(() => {
+    if (file) {
+      setSelectedFile(file);
       setChatLog(prev => [
         ...prev,
-        { text: `Uploaded file: ${file.name}`, isUser: true },
-        { text: "I've received your file. How can I help with it?", isUser: false } // Standard bot response object
+        { text: `Selected file: ${file.name}`, isUser: true }
       ]);
-      setSelectedFile(null); // Clear selection after pseudo-upload
-      setIsLoading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ""; // Reset file input
-      }
-    }, 1500);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""; // Reset file input after selection
+    }
   };
 
   // --- sendMessage (keep as is, response structure is already handled) ---
   const sendMessage = async () => {
-    console.log("sendMessage called with prompt:", prompt);
+    console.log("sendMessage called with prompt:", prompt, "and file:", selectedFile);
+
     if (!prompt.trim() && !selectedFile) {
       console.log("Empty prompt and no file selected, aborting send.");
       return; // Prevent empty send
@@ -97,76 +91,89 @@ const Home = () => {
         return;
       }
 
-      const response = await fetch('http://127.0.0.1:8000/api/get_ai_response/', {
+      let response;
+      let apiUrl = 'http://127.0.0.1:8000/api/get_ai_response/';
+      let requestData;
+      let headers = {
+        'Authorization': `Bearer ${token}`,
+      };
+
+      if (selectedFile) {
+        apiUrl = 'http://127.0.0.1:8000/api/ask-file/';
+        const formData = new FormData();
+        formData.append('prompt', prompt);
+        formData.append('file', selectedFile);
+        requestData = formData;
+        // Do NOT set 'Content-Type' for FormData
+      } else {
+        headers['Content-Type'] = 'application/json';
+        requestData = JSON.stringify({ prompt });
+      }
+
+      response = await fetch(apiUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ prompt })
+        headers: headers,
+        body: requestData,
       });
 
-      console.log("API response status:", response.status);
+      console.log("API response status:", response.status, "URL:", apiUrl);
 
       if (!response.ok) {
-          if (response.status === 401) {
-             navigate('/login');
-             throw new Error("Authentication failed. Please login again.");
-          }
-          let errorData;
-          try {
-              errorData = await response.json();
-          } catch (jsonError) {
-              throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
-          }
-          throw new Error(errorData?.error || errorData?.detail || `Request failed with status ${response.status}`);
+        if (response.status === 401) {
+          navigate('/login');
+          throw new Error("Authentication failed. Please login again.");
+        }
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (jsonError) {
+          throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+        }
+        throw new Error(errorData?.error || errorData?.detail || `Request failed with status ${response.status}`);
       }
 
       const data = await response.json();
       console.log("API response data:", data);
 
-      if (data.status === 'success') {
-          const responseObj = typeof data.response === 'object' ? data.response : {};
-          let responseText = responseObj.response || (typeof data.response === 'string' ? data.response : 'Received response');
-          const intent = responseObj.intent || null;
-          const followUp = Array.isArray(responseObj.follow_up) ? responseObj.follow_up : [];
-
-          if (typeof responseText === 'string') {
-            responseText = responseText.replace(/<think>[\s\S]*?<\/think>\n*/, '').trim();
-          }
-
-          let formattedText = responseText;
-          if (typeof responseText === 'string') {
-              if (responseText.includes("I'll remember your name is ")) {
-                  const name = responseText.replace("I'll remember your name is ", "").trim();
-                  formattedText = `Got it! I'll call you ${name}`;
-              }
-              else if (responseText.startsWith("Your name is ")) {
-                  const name = responseText.replace("Your name is ", "").trim();
-                  formattedText = `Yes, your name is ${name}`;
-              }
-          }
-
-          const botResponse = {
-            text: formattedText,
-            isUser: false,
-            intent: intent && intent.trim() ? intent : null,
-            followUp: followUp
-          };
-
-          setChatLog(prev => [...prev, botResponse]);
+      let botResponse;
+      if (selectedFile) {
+        botResponse = {
+          text: data.answer || data.error || 'No response received for file analysis.',
+          isUser: false,
+        };
       } else {
-          throw new Error(data.error || data.detail || 'API returned an error');
+        const fullResponse = data.response || '';
+        let intent = null;
+        let responseText = '';
+
+        const intentMatch = fullResponse.match(/Detected Intent: `([^`]+)`/);
+        if (intentMatch && intentMatch[1]) {
+          intent = intentMatch[1];
+        }
+        responseText = fullResponse.replace(/Detected Intent: `[^`]+`\n*\n*/, '').trim();
+
+        botResponse = {
+          text: responseText,
+          isUser: false,
+          intent: intent || null,
+        };
       }
+
+      setChatLog(prev => [...prev, botResponse]);
+
     } catch (error) {
-        console.error("API Error:", error);
-        setChatLog(prev => [...prev, {
-            text: `Error: ${error.message || "Sorry, I couldn't get a response."}`,
-            isUser: false,
-            isError: true
-        }]);
+      console.error("API Error:", error);
+      setChatLog(prev => [...prev, {
+        text: `Error: ${error.message || "Sorry, I couldn't process your request."}`,
+        isUser: false,
+        isError: true
+      }]);
     } finally {
       setIsLoading(false);
+      setSelectedFile(null); // Clear selected file *after* the API call.
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""; // Reset file input
+      }
     }
   };
 
@@ -215,11 +222,12 @@ const Home = () => {
                 {/* Combine intent and message content within one div */}
                 <div className="message-content">
                   {/* Conditionally render intent text FIRST inside message-content */}
-                  {!message.isUser && message.intent && !message.isError && ( // Don't show intent for errors
-                    <div className="intent-text-integrated"> {/* Use this new class */}
+                  {!message.isUser && message.intent && !message.isError && (
+                    <div className="intent-text-integrated">
                       ✨ Detected Intent: {message.intent}
                     </div>
                   )}
+
 
                   {/* Render the main message text */}
                   <p>{message.text}</p>

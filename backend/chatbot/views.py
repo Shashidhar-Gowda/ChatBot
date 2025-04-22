@@ -13,7 +13,7 @@ from rest_framework.decorators import api_view, permission_classes
 from .models import ChatHistory
 from .serializers import ChatHistorySerializer
 from endpoints.llm_chain import get_bot_response  # Import the AI response function directly
-from endpoints.mongo_chat_history import save_chat_history as mongo_save_chat_history, get_chat_history_by_user
+from endpoints.mongo_chat_history import save_chat_history as mongo_save_chat_history, get_chat_history_by_session
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -72,27 +72,36 @@ def get_ai_response_view(request):
             },
             status=500
         )
-
 class LoginView(APIView):
     def post(self, request):
-        email = request.data.get("email")  # Changed from username to email
+        print("RAW request body:", request.body)
+        print("Parsed request data:", request.data)
+
+        email = request.data.get("email")  # Changed to email
         password = request.data.get("password")
 
         print("Login attempt:", email)
 
-        user = authenticate(username=email, password=password)
-        print("Authenticated user:", user)
+        # Query the user by email
+        User = get_user_model()  # Use custom user model if applicable
+        try:
+            user = User.objects.get(email=email)  # Look up by email
+        except User.DoesNotExist:
+            user = None
 
-        if user is not None:
+        # Check the password
+        if user and user.check_password(password):  # Check if the password is correct
+            # If password matches, generate JWT token
             refresh = RefreshToken.for_user(user)
             return Response({
                 "message": "Login success",
                 "access": str(refresh.access_token),
                 "refresh": str(refresh),
             }, status=status.HTTP_200_OK)
-        
-        return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
+        print("Authenticated user:", user)
+
+        return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 class SignupView(APIView):
     def post(self, request):
         email = request.data.get("email")
@@ -125,21 +134,25 @@ def save_chat_history(request):
     user = request.user
     prompt = request.data.get("prompt")
     response = request.data.get("response")
+    session_id = request.data.get("session_id")
 
-    if prompt and response:
+    if prompt and response and session_id:
         ChatHistory.objects.create(user=user, prompt=prompt, response=response)
-        # Also save in MongoDB
-        mongo_save_chat_history(user.username, prompt, response)
+        # Also save in MongoDB with session_id
+        mongo_save_chat_history(user.username, prompt, response, session_id)
         return Response({"message": "Chat saved successfully"})
-    return Response({"error": "Missing data"}, status=400)
+    return Response({"error": "Missing data or session_id"}, status=400)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_chats(request):
     user = request.user
-    # Fetch chat history from MongoDB
-    mongo_chats = get_chat_history_by_user(user.username)
-    print(f"MongoDB chats raw data for user {user.username}: {mongo_chats}")
+    session_id = request.query_params.get('session_id')
+    if not session_id:
+        return Response({"error": "session_id query parameter is required"}, status=400)
+    # Fetch chat history from MongoDB by session
+    mongo_chats = get_chat_history_by_session(user.username, session_id)
+    print(f"MongoDB chats raw data for user {user.username} session {session_id}: {mongo_chats}")
     # Format MongoDB chat history for frontend
     formatted_chats = []
     for chat in mongo_chats:
@@ -161,47 +174,39 @@ def upload_file(request):
     try:
         if 'file' not in request.FILES:
             return Response({'error': 'No file provided'}, status=400)
-            
+        
         uploaded_file = request.FILES['file']
         prompt = request.POST.get('prompt', '')
+        print(f"Received upload with prompt: {prompt}")  # Log prompt for debugging
         
         # Validate prompt exists with file upload
         if not prompt.strip():
             return Response(
-                {'error': 'Analysis prompt is required with file upload'}, 
+                {'error': 'Analysis prompt is required with file upload'},
                 status=400
             )
         
         # Validate file type
         if not uploaded_file.name.endswith(('.csv', '.xlsx', '.xls', '.json', '.docx')):
             return Response({'error': 'Only CSV, Excel, JSON, and Word files are allowed'}, status=400)
-            
+        
         # Validate file size (10MB max)
         if uploaded_file.size > 10 * 1024 * 1024:
             return Response({'error': 'File size exceeds 10MB limit'}, status=400)
-            
-        # Save file to uploads directory
-        import os
-        from django.conf import settings
         
-        upload_dir = os.path.join(settings.BASE_DIR, 'endpoints', 'uploaded_files')
-        os.makedirs(upload_dir, exist_ok=True)
+        # Process file in memory without saving to disk
+        file_content = uploaded_file.read()
         
-        file_path = os.path.join(upload_dir, uploaded_file.name)
-        with open(file_path, 'wb+') as destination:
-            for chunk in uploaded_file.chunks():
-                destination.write(chunk)
-                
-        # Process the file using the enhanced analyzer
+        # Process the file content using the enhanced analyzer
         try:
-            from endpoints.llm_chain import analyze_file_data
-            analysis_result = analyze_file_data(file_path, prompt)
+            from endpoints.llm_chain import analyze_file_data_in_memory
+            analysis_result = analyze_file_data_in_memory(file_content, uploaded_file.name, prompt)
             
             if analysis_result['status'] == 'error':
                 response = analysis_result['fallback']
             else:
                 response = analysis_result['result']
-                
+            
             # Log successful analysis
             ChatHistory.objects.create(
                 user=request.user,
@@ -211,11 +216,12 @@ def upload_file(request):
             )
             return Response({
                 'status': 'success',
-                'message': 'File uploaded successfully',
+                'message': 'File uploaded and processed successfully',
                 'response': response
             })
         except Exception as e:
+            print(f"Analysis failed: {str(e)}")  # Log error for debugging
             return Response({'error': f'Analysis failed: {str(e)}'}, status=500)
-            
     except Exception as e:
+        print(f"Upload file error: {str(e)}")  # Log error for debugging
         return Response({'error': str(e)}, status=500)

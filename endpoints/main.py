@@ -20,10 +20,11 @@ except ImportError:
 try:
     from endpoints.llm_chain import get_bot_response, reset_memory, llm
 except ImportError:
-    from .llm_chain import get_bot_response, reset_memory, llm
+    from .llm_chain import get_bot_response, llm
 import os
 from uuid import uuid4
 from typing import Optional
+from endpoints.llm_chain import agent 
 
 app = FastAPI()
 router = APIRouter()
@@ -32,6 +33,7 @@ security = HTTPBearer()
 origins = [
     "http://localhost:5174",
     "http://127.0.0.1:5174",
+    "http://localhost:3000",
 ]
 
 app.add_middleware(
@@ -64,7 +66,7 @@ async def login(request: Request):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "http://127.0.0.1:8000/api/login/",
+                "http://backend:8000/api/login/",
                 json={"username": body["email"], "password": body["password"]}
             )
 
@@ -82,7 +84,7 @@ async def signup(request: Request):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "http://127.0.0.1:8000/api/signup/",
+                "http://backend:8000/api/signup/",
                 json={"email": body["email"], "password": body["password"]}
             )
 
@@ -90,8 +92,17 @@ async def signup(request: Request):
             return {"message": "Signup successful"}
         else:
             raise HTTPException(status_code=response.status_code, detail=response.json())
+
+    except httpx.RequestError as e:
+        # Log the error details
+        print(f"HTTPX request error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Log the full error trace for better debugging
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Signup failed: {str(e)}")
+
 
 @router.post("/api/chat")
 async def chat_with_llm(
@@ -115,56 +126,41 @@ import pandas as pd
 from io import StringIO, BytesIO
 
 @router.post("/api/ask-file")
-async def ask_file(prompt: str = Form(...), file: UploadFile = File(...), token=Depends(security)):
+async def ask_file(
+    prompt: str = Form(...),
+    file: UploadFile = File(...),
+    token: str = Depends(verify_token)
+):
     try:
-        # Read file content directly into memory
-        contents = await file.read()
-        
-        # Process based on file type
-        if file.filename.endswith('.csv'):
-            df = pd.read_csv(BytesIO(contents))
-        elif file.filename.endswith('.json'):
-            df = pd.read_json(BytesIO(contents))
-        elif file.filename.endswith(('.xlsx', '.xls')):
-            df = pd.read_excel(BytesIO(contents))
-        else:
-            return JSONResponse(
-                {"error": "Unsupported file format. Use CSV, JSON or Excel"},
-                status_code=400
-            )
-        
-        # Convert DataFrame to dict for analysis
-        data_dict = df.to_dict(orient='records')
-        
-        # Initialize analysis tools with direct DataFrame
-        tools = AnalysisTools()
-        tools.df = df  # Store DataFrame reference
-        
-        # Process based on prompt intent
-        if "statistics" in prompt.lower() or "describe" in prompt.lower():
-            result = tools.describe_data(data_str)
-        elif "correlation" in prompt.lower():
-            # Extract column names from prompt if specified
-            columns = [col for col in df.columns if col.lower() in prompt.lower()]
-            result = tools.correlation_analysis(
-                data_str,
-                x_col=columns[0] if len(columns) > 0 else df.columns[0],
-                y_col=columns[1] if len(columns) > 1 else df.columns[1]
-            )
-        else:
-            # Default analysis
-            result = tools.describe_data(data_str)
-        
-        return {
-            "answer": f"Analysis of {file.filename}:\n{result}",
-            "raw_data": result
-        }
-        
+        # Validate file and save it (as in your original code)
+        MAX_SIZE = 50 * 1024 * 1024
+        file.file.seek(0, 2)
+        file_size = file.file.tell()
+        file.file.seek(0)
+        valid_extensions = ['.csv', '.json', '.xlsx', '.xls']
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_size > MAX_SIZE or file_ext not in valid_extensions:
+            raise HTTPException(status_code=400, detail="Invalid file")
+
+        file_id = str(uuid4())
+        file_path = os.path.join(UPLOAD_DIR, f"{file_id}_{file.filename}")
+        with open(file_path, "wb") as buffer:
+            while chunk := await file.read(1024 * 1024):
+                buffer.write(chunk)
+
+        # Construct the input for the LangChain agent, including the file path
+        tool_input = f"file_path={file_path}; {prompt}"  # Adjust format as needed
+
+        # Invoke the LangChain agent with the constructed input
+        response = await agent.ainvoke({"input": tool_input})
+        answer = response.get("output", "No answer found.")
+
+        return {"answer": answer, "file_path": file_path}
+
+    except HTTPException:
+        raise
     except Exception as e:
-        return JSONResponse(
-            {"error": f"Analysis failed: {str(e)}"},
-            status_code=500
-        )
+        return JSONResponse({"error": f"File processing failed: {str(e)}"}, status_code=500)
 
 @app.post("/api/reset_chat")
 async def reset_chat(token: str = Depends(verify_token)):
@@ -221,4 +217,3 @@ async def upload_dataset(file: UploadFile = File(...)):
             status_code=500,
             detail=f"Upload failed: {str(e)}"
         )
-

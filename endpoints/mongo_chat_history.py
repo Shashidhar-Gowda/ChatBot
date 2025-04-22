@@ -11,9 +11,9 @@ DB_NAME = "chat_history_db"
 COLLECTION_NAME = "user_chats"
 
 # Initialize MongoDB client
-client = MongoClient(MONGO_URI)
-db = client[DB_NAME]
-collection = db[COLLECTION_NAME]
+client = MongoClient("mongodb://localhost:27017/")
+db = client["chatbot_db"]
+collection = db["chat_history"]
 
 def save_chat_history(user_id: str, prompt: str, response: str, session_id: Optional[str] = None) -> None:
     """
@@ -28,33 +28,12 @@ def save_chat_history(user_id: str, prompt: str, response: str, session_id: Opti
         "timestamp": datetime.utcnow()
     }
     collection.insert_one(chat_doc)
+from pymongo import MongoClient
 
-def get_chat_history_by_user(user_id: str, limit: int = 50) -> List[Dict]:
-    """
-    Retrieve chat history for a user, sorted by timestamp descending.
-    """
-    cursor = collection.find({"user_id": user_id}).sort("timestamp", -1).limit(limit)
-    return list(cursor)
 
-def get_chat_history_by_session(session_id: str, limit: int = 50) -> List[Dict]:
-    """
-    Retrieve chat history for a session, sorted by timestamp descending.
-    """
-    cursor = collection.find({"session_id": session_id}).sort("timestamp", -1).limit(limit)
-    return list(cursor)
 
-def clear_chat_history_by_session(session_id: str) -> None:
-    """
-    Delete chat history documents for a session.
-    """
-    collection.delete_many({"session_id": session_id})
-
-def clear_chat_history_by_user(user_id: str) -> None:
-    """
-    Delete chat history documents for a user.
-    """
-    collection.delete_many({"user_id": user_id})
-
-# Example usage:
-# save_chat_history("user123", "Hello", "Hi there!", session_id="sess456")
-# chats = get_chat_history_by_user("user123")
+def get_chat_history_by_session(username, session_id):
+    return list(collection.find({
+        "username": username,
+        "session_id": session_id
+    }).sort("timestamp", 1))

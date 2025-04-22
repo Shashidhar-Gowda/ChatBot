@@ -1,5 +1,5 @@
 # Makes endpoints a Python package
-from .llm_chain import get_bot_response, reset_memory, llm
+from .llm_chain import get_bot_response, llm
 from .tools import AnalysisTools
 from langchain.agents import Tool
 

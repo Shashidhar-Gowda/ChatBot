@@ -44,6 +44,8 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', "backend"]
 
+MONGO_URL = 'mongodb://mongo:27017/'
+
 
 # Application definition
 
@@ -69,7 +71,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8001",
     "http://127.0.0.1:8000",
     "http://127.0.0.1:8001",
-    "http://0.0.0.0"
+    "http://frontend:3000",
 ]
 
 CORS_ALLOW_METHODS = [

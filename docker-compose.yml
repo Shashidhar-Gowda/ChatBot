@@ -3,7 +3,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile.backend
+      dockerfile: backend/Dockerfile.backend
     container_name: django-backend
     restart: unless-stopped
     depends_on:
@@ -17,26 +17,13 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile.frontend
+      dockerfile: frontend/Dockerfile.frontend
     container_name: lanchain-frontend
     restart: unless-stopped
     depends_on:
       - backend
     ports:
-      - "3000:3000"
-
-  fastapi:
-    build:
-      context: .
-      dockerfile: Dockerfile.fastapi
-    container_name: fastapi-endpoints
-    ports:
-      - "8001:8001"
-    depends_on:
-      - backend
-    environment:
-      - GROQ_API_KEY=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
-      - MONGO_URI=mongodb://mongo:27017/chatbot_history
+      - "3000:80"
 
   mongo:
     image: mongo:latest

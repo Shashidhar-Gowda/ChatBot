@@ -34,7 +34,7 @@ const AskFile = () => {
     formData.append("prompt", prompt);
 
     try {
-      const res = await axios.post("http://127.0.0.1:8001/api/ask-file/", formData, {
+      const res = await axios.post("http://127.0.0.1:8000/api/ask-file/", formData, {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",

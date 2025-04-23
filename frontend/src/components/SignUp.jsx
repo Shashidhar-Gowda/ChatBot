@@ -18,7 +18,7 @@ const SignUp = () => {
     try {
       setLoading(true);
       const response = await axios.post(
-        "http://localhost:8001/api/signup",
+        "http://127.0.0.1:8000/api/signup/",
         { email, password },
         { headers: { "Content-Type": "application/json" } }
       );

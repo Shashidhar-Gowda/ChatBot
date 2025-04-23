@@ -6,7 +6,8 @@ from .views import (
     get_chats, 
     get_ai_response_view,
     upload_file,
-    verify_token
+    verify_token,
+    ask_file_view
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -23,4 +24,5 @@ urlpatterns = [
     path('api/get_ai_response/', get_ai_response_view, name='get_ai_response'),
     path('api/upload-file/', upload_file, name='upload_file'),
     path('api/verify_token/', verify_token, name='verify_token'),
+    path("api/ask-file/", ask_file_view, name="ask_file"),
 ]

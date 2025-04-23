@@ -17,7 +17,7 @@ const Login = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
       try {
-        const res = await axios.post("http://loaclhost:8001/api/login/", {
+        const res = await axios.post("http://127.0.0.1:8000/api/login/", {
           email,
           password,
         });

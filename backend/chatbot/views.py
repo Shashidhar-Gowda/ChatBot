@@ -1,7 +1,11 @@
 from django.shortcuts import render
 import json
-
-# Create your views here.
+import os
+from uuid import uuid4
+from django.http import JsonResponse, HttpResponseBadRequest
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from rest_framework.views import APIView
@@ -12,8 +16,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from .models import ChatHistory
 from .serializers import ChatHistorySerializer
-from endpoints.llm_chain import get_bot_response  # Import the AI response function directly
-from endpoints.mongo_chat_history import save_chat_history as mongo_save_chat_history, get_chat_history_by_session
+from .llm_chain import get_bot_response  # Import the AI response function directly
+from .mongo_chat_history import save_chat_history as mongo_save_chat_history, get_chat_history_by_session
+from django.contrib.auth import get_user_model
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -199,7 +204,7 @@ def upload_file(request):
         
         # Process the file content using the enhanced analyzer
         try:
-            from endpoints.llm_chain import analyze_file_data_in_memory
+            from .llm_chain import analyze_file_data_in_memory
             analysis_result = analyze_file_data_in_memory(file_content, uploaded_file.name, prompt)
             
             if analysis_result['status'] == 'error':
@@ -225,3 +230,43 @@ def upload_file(request):
     except Exception as e:
         print(f"Upload file error: {str(e)}")  # Log error for debugging
         return Response({'error': str(e)}, status=500)
+
+
+from .llm_chain import agent  
+
+UPLOAD_DIR = os.path.join(settings.BASE_DIR, 'uploaded_files')
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@csrf_exempt
+@require_POST
+def ask_file_view(request):
+    try:
+        prompt = request.POST.get("prompt")
+        file = request.FILES.get("file")
+        if not prompt or not file:
+            return HttpResponseBadRequest("Prompt and file are required.")
+
+        # File validation
+        MAX_SIZE = 50 * 1024 * 1024
+        file_ext = os.path.splitext(file.name)[1].lower()
+        valid_extensions = ['.csv', '.json', '.xlsx', '.xls']
+
+        if file.size > MAX_SIZE or file_ext not in valid_extensions:
+            return JsonResponse({"error": "Invalid file"}, status=400)
+
+        file_id = str(uuid4())
+        file_path = os.path.join(UPLOAD_DIR, f"{file_id}_{file.name}")
+
+        with open(file_path, "wb+") as dest:
+            for chunk in file.chunks():
+                dest.write(chunk)
+
+        # Call the LangChain agent
+        tool_input = f"file_path={file_path}; {prompt}"
+        response = agent.invoke({"input": tool_input})  # remove `await` since it's sync in Django
+
+        answer = response.get("output", "No answer found.")
+        return JsonResponse({"answer": answer, "file_path": file_path})
+
+    except Exception as e:
+        return JsonResponse({"error": f"File processing failed: {str(e)}"}, status=500)

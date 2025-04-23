@@ -4,14 +4,8 @@ from typing import List, Dict, Optional
 from datetime import datetime
 
 # MongoDB connection URI - set this in your environment variables for security
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-
-# Database and collection names
-DB_NAME = "chat_history_db"
-COLLECTION_NAME = "user_chats"
-
-# Initialize MongoDB client
-client = MongoClient("mongodb://localhost:27017/")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://mongo:27017/chatbot_db")
+client = MongoClient(MONGO_URI)
 db = client["chatbot_db"]
 collection = db["chat_history"]
 

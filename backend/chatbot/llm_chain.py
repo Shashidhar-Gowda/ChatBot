@@ -328,33 +328,36 @@ agent = initialize_agent(
 # ===== Final Agent Call with Intent Detection =====
 
 # chain_llm.py
+def get_onboarding_message() -> str:
+    return (
+        "Hi! I am **BrainBot**. I perform **Data Analysis** and give you **predictions** "
+        "related to your input dataset. I also provide you **insights** related to your data.\n\n"
+        "**You can upload your dataset in these formats:**\n"
+        "1 - Load CSV file\n"
+        "2 - Load JSON file\n"
+        "3 - Connect to BigQuery table\n\n"
+    )
+
 def get_bot_response(user_id: str, user_input: str) -> str:
     """Detect user intent and get response from agent or LLM with user context"""
     try:
-        # Step 1: Detect intent using LLM
         intent = detect_intent(llm, user_input)
         print(f"[DEBUG] Detected Intent: {intent}")
-
-        # Step 2: Routing based on intent
-        if intent in ["Greeting", "chitchat", "greeting", "unknown","general_qa"]:
-            # General Q&A handled by LLM directly
-            response = llm.invoke(user_input)
-            content = response.content if hasattr(response, "content") else str(response)
-            return f"**Detected Intent:** `{intent}`\n\n**Response:**\n{content}"
-
-        # Step 3: Use tools for analysis-related intents
-        if intent in ["summarize_tool", "correlation_tool", "linear_regression_tool", "polynomial_regression_tool", "ann_classification_tool"]:
-            # Handle analysis queries by invoking tools
+        # Step 1: Show onboarding for greetings or unknown/general queries
+        if intent in ["Greeting", "chitchat", "greeting", "unknown", "general_qa"]:
+            return f"**Detected Intent:** `{intent}`\n\n**Response:**\n{get_onboarding_message()}"
+        # Step 2: Use tools for analysis intents
+        if intent in [
+            "summarize_tool", "correlation_tool", "linear_regression_tool",
+            "polynomial_regression_tool", "ann_classification_tool"
+        ]:
             response = agent.invoke({"input": user_input})
             content = response.get("output", str(response))
             return f"**Detected Intent:** `{intent}`\n\n**Response:**\n{content}"
-
-        # Step 4: Secure code execution for file uploads
-        if intent == "code_execution_tool":  # example for file-based tasks
-            # Call your secure notebook code execution here
+        # Step 3: Code execution for file uploads
+        if intent == "code_execution_tool":
             response = handle_file_upload_and_execution(user_input)
             return f"**Detected Intent:** `{intent}`\n\n**Response:**\n{response}"
-
     except Exception as e:
         return f"**Detected Intent:** `error`\n\n**Response:**\n{str(e)}"
 

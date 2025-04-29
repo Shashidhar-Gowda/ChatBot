@@ -1,66 +1,51 @@
-import React, { useEffect, useState } from "react";
-import axios from "axios";
+import { useState, useEffect } from 'react';
 
-const Dashboard = () => {
-  console.log("Dashboard Component Rendered");
-  const token = localStorage.getItem("token");
-  const [chatHistory, setChatHistory] = useState([]);
-  const [refreshCount, setRefreshCount] = useState(0);
+function Dashboard() {
+    const [chats, setChats] = useState([]);
+    const [selectedChat, setSelectedChat] = useState(null);
 
-  const fetchChats = async () => {
-    console.log("Fetching chat history from backend...");
-    console.log("Token used for fetch:", token);
-    try {
-      const res = await axios.get("http://127.0.0.1:8000/api/get_chats/", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      console.log("Chat history fetched:", res.data);
-      setChatHistory(res.data);
-    } catch (error) {
-      console.error("Error fetching chat history:", error);
-      setChatHistory([]);
-    }
-  };
+    useEffect(() => {
+        fetch('/api/list_chats/', { credentials: 'include' }) // ✅ Fixed URL
+            .then(res => res.json())
+            .then(data => setChats(data.sessions)); // ✅ sessions not chats
+    }, []);
 
-  useEffect(() => {
-    console.log("useEffect triggered: fetching chats");
-    fetchChats();
-  }, [token, refreshCount]);
+    const loadChat = (sessionId) => {
+        fetch(`/api/get_chat/${sessionId}/`, { credentials: 'include' }) // ✅ Fixed URL
+            .then(res => res.json())
+            .then(data => setSelectedChat(data.messages));
+    };
 
-  const handleRefresh = () => {
-    console.log("Refresh button clicked");
-    setRefreshCount(prev => prev + 1);
-  };
+    return (
+        <div style={{ display: 'flex' }}>
+            {/* Sidebar */}
+            <div style={{ width: '30%', borderRight: '1px solid gray', padding: '10px' }}>
+                <h2>My Chats</h2>
+                <button onClick={() => setSelectedChat(null)}>➕ New Chat</button>
+                {chats.map(chat => (
+                    <div key={chat._id} onClick={() => loadChat(chat._id)} style={{ cursor: 'pointer', marginTop: '10px' }}>
+                        {chat._id || 'No Title'}
+                    </div>
+                ))}
+            </div>
 
-  return (
-    <div>
-      <h2>Your Chat History</h2>
-      <button onClick={handleRefresh} style={{ marginBottom: "1rem" }}>
-        Refresh Chat History
-      </button>
-      {chatHistory.length === 0 ? (
-        <p>No chat history found.</p>
-      ) : (
-        <ul>
-          {chatHistory.map((chat, index) => (
-            <li key={index} style={{ marginBottom: "1rem" }}>
-              <strong>Prompt:</strong> {chat.prompt} <br />
-              <strong>Response:</strong> {typeof chat.response === 'object' ? (chat.response.response || JSON.stringify(chat.response)) : chat.response} <br />
-              <small>
-                <em>
-                  {chat.timestamp
-                    ? new Date(chat.timestamp).toLocaleString()
-                    : "No timestamp"}
-                </em>
-              </small>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-};
+            {/* Chat Window */}
+            <div style={{ flex: 1, padding: '10px' }}>
+                {selectedChat ? (
+                    <div>
+                        <h2>Chat</h2>
+                        {selectedChat.map((msg, index) => (
+                            <div key={index} style={{ margin: '5px 0' }}>
+                                <b>{msg.role === 'user' ? 'You' : 'Bot'}:</b> {msg.prompt || msg.response}
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div>Start a new chat!</div>
+                )}
+            </div>
+        </div>
+    );
+}
 
 export default Dashboard;

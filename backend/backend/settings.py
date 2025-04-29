@@ -46,6 +46,16 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', "backend"]
 
 MONGO_URL = 'mongodb://mongo:27017/'
 
+# settings.py
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+CSRF_COOKIE_NAME = 'csrftoken'
+CSRF_COOKIE_HTTPONLY = True  # Helps prevent XSS attacks
+CSRF_COOKIE_SECURE = True  # Ensures the cookie is only sent over HTTPS
 
 # Application definition
 
@@ -150,6 +160,8 @@ REST_FRAMEWORK = {
     ),
 }
 
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 
 TEMPLATES = [
@@ -175,10 +187,15 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'chatbot',
+        'USER': 'root',
+        'PASSWORD': 'root',
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
+
 
 
 # Password validation

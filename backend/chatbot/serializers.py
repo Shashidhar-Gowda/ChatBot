@@ -1,7 +1,8 @@
 from rest_framework import serializers
-from .models import ChatHistory
+from .models import UploadedFile
 
-class ChatHistorySerializer(serializers.ModelSerializer):
+class UploadedFileSerializer(serializers.ModelSerializer):
     class Meta:
-        model = ChatHistory
-        fields = ['id', 'prompt', 'response', 'timestamp']
+        model = UploadedFile
+        fields = '__all__'
+        read_only_fields = ('owner', 'upload_time', 'filesize', 'filetype')

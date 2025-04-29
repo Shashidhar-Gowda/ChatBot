@@ -15,19 +15,26 @@ from django.contrib.auth.models import User
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from .models import ChatHistory
-from .serializers import ChatHistorySerializer
-from .llm_chain import get_bot_response  # Import the AI response function directly
+from .serializers import UploadedFileSerializer
+from .llm.main import get_bot_response 
 from .mongo_chat_history import save_chat_history as mongo_save_chat_history, get_chat_history_by_session
 from django.contrib.auth import get_user_model
+from django.shortcuts import render, redirect
+from .models import UploadedFile
+from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+import json
+from bson import ObjectId
+import traceback
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def get_ai_response_view(request):
     try:
-        # Get user ID from JWT token
-        user_id = request.user.username  # Using username as user ID
-        
-        # Handle different content types
+        user_id = request.user.username  # Use user ID from JWT
+
         if request.content_type == 'application/json':
             try:
                 request_data = json.loads(request.body)
@@ -35,48 +42,27 @@ def get_ai_response_view(request):
                 return Response({'error': 'Invalid JSON'}, status=400)
         else:
             request_data = request.data
-            
-        # Get prompt from request data
+
         prompt = request_data.get('prompt')
+        file_id = request_data.get('file_id')  # Get file_id from request
         if not prompt:
             return Response({'error': 'Prompt is required'}, status=400)
-            
-        # Get AI response with user context
-        ai_response = get_bot_response(user_id, prompt)
-        
-        # Save to chat history in Django ORM
-        ChatHistory.objects.create(
-            user=request.user,
-            prompt=prompt,
-            response=ai_response
-        )
-        
-        # Save to chat history in MongoDB
-        mongo_save_chat_history(user_id, prompt, ai_response)
-        
-        print("AI Response Structure:", {
-            'raw_response': ai_response,
-            'type': type(ai_response),
-            'is_dict': isinstance(ai_response, dict)
-        })
+
+        # Use the new get_bot_response from main.py, passing file_id
+        ai_response = get_bot_response(prompt, file_id=file_id, user=request.user)
+
+
+        # Save chat history in MongoDB
+        mongo_save_chat_history(user_id, prompt, ai_response, session_id=None)
+
         return Response({
             'response': ai_response,
             'status': 'success'
         })
     except Exception as e:
-        import traceback
-        print(f"Error in get_ai_response_view: {str(e)}\n{traceback.format_exc()}")
-        error_details = str(e)
-        if isinstance(e, json.JSONDecodeError):
-            error_details = "Invalid JSON data"
-        return Response(
-            {
-                'error': 'Internal server error', 
-                'details': error_details,
-                'content_type': request.content_type
-            },
-            status=500
-        )
+        print(f"Error: {str(e)}\n{traceback.format_exc()}")
+        return Response({'error': 'Internal server error'}, status=500)
+    
 class LoginView(APIView):
     def post(self, request):
         print("RAW request body:", request.body)
@@ -107,6 +93,7 @@ class LoginView(APIView):
         print("Authenticated user:", user)
 
         return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
 class SignupView(APIView):
     def post(self, request):
         email = request.data.get("email")
@@ -133,20 +120,33 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from .models import ChatHistory
 
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def save_chat_history(request):
-    user = request.user
-    prompt = request.data.get("prompt")
-    response = request.data.get("response")
-    session_id = request.data.get("session_id")
+import json
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 
-    if prompt and response and session_id:
-        ChatHistory.objects.create(user=user, prompt=prompt, response=response)
-        # Also save in MongoDB with session_id
-        mongo_save_chat_history(user.username, prompt, response, session_id)
-        return Response({"message": "Chat saved successfully"})
-    return Response({"error": "Missing data or session_id"}, status=400)
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+
+@csrf_exempt
+def save_chat_history(request):
+    if request.method == 'POST':
+        try:
+            # Extract 'prompt' and 'response' from request body
+            data = json.loads(request.body)
+            prompt = data.get('prompt')
+            response = data.get('response')
+
+            if not prompt or not response:
+                return JsonResponse({'error': 'Prompt and response are required'}, status=400)
+
+            # Save chat history logic here (e.g., saving to database or MongoDB)
+            # Your logic to save chat history should go here
+            return JsonResponse({'status': 'success'}, status=200)
+
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+    else:
+        return JsonResponse({'error': 'Invalid HTTP method'}, status=405)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -173,100 +173,120 @@ def get_chats(request):
 def verify_token(request):
     return Response({"status": "success", "message": "Token is valid."})
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def upload_file(request):
-    try:
-        if 'file' not in request.FILES:
-            return Response({'error': 'No file provided'}, status=400)
-        
-        uploaded_file = request.FILES['file']
-        prompt = request.POST.get('prompt', '')
-        print(f"Received upload with prompt: {prompt}")  # Log prompt for debugging
-        
-        # Validate prompt exists with file upload
-        if not prompt.strip():
-            return Response(
-                {'error': 'Analysis prompt is required with file upload'},
-                status=400
-            )
-        
-        # Validate file type
-        if not uploaded_file.name.endswith(('.csv', '.xlsx', '.xls', '.json', '.docx')):
-            return Response({'error': 'Only CSV, Excel, JSON, and Word files are allowed'}, status=400)
-        
-        # Validate file size (10MB max)
-        if uploaded_file.size > 10 * 1024 * 1024:
-            return Response({'error': 'File size exceeds 10MB limit'}, status=400)
-        
-        # Process file in memory without saving to disk
-        file_content = uploaded_file.read()
-        
-        # Process the file content using the enhanced analyzer
-        try:
-            from .llm_chain import analyze_file_data_in_memory
-            analysis_result = analyze_file_data_in_memory(file_content, uploaded_file.name, prompt)
-            
-            if analysis_result['status'] == 'error':
-                response = analysis_result['fallback']
-            else:
-                response = analysis_result['result']
-            
-            # Log successful analysis
-            ChatHistory.objects.create(
-                user=request.user,
-                prompt=prompt,
-                response=response,
-                file_used=uploaded_file.name
-            )
-            return Response({
-                'status': 'success',
-                'message': 'File uploaded and processed successfully',
-                'response': response
-            })
-        except Exception as e:
-            print(f"Analysis failed: {str(e)}")  # Log error for debugging
-            return Response({'error': f'Analysis failed: {str(e)}'}, status=500)
-    except Exception as e:
-        print(f"Upload file error: {str(e)}")  # Log error for debugging
-        return Response({'error': str(e)}, status=500)
+from django.shortcuts import render
+import json
+from django.http import JsonResponse, HttpResponseBadRequest, HttpResponseServerError
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.db import connection
+import pandas as pd
+import io
+import traceback
+from .llm.main import get_bot_response
+from sqlalchemy import text
 
 
-from .llm_chain import agent  
-
-UPLOAD_DIR = os.path.join(settings.BASE_DIR, 'uploaded_files')
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+import os
+import pandas as pd
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.core.files.storage import default_storage
+from django.conf import settings
+import json
+from .models import UploadedFile # Assuming you have a model for uploaded data
+from .llm.main import get_bot_response  # We'll define this utility function
 
 @csrf_exempt
-@require_POST
-def ask_file_view(request):
-    try:
-        prompt = request.POST.get("prompt")
-        file = request.FILES.get("file")
-        if not prompt or not file:
-            return HttpResponseBadRequest("Prompt and file are required.")
+def get_ai_response(request):
+    if request.method == "POST":
+        data = json.loads(request.body)
+        prompt = data.get('prompt')
 
-        # File validation
-        MAX_SIZE = 50 * 1024 * 1024
-        file_ext = os.path.splitext(file.name)[1].lower()
-        valid_extensions = ['.csv', '.json', '.xlsx', '.xls']
+        # Call your LLM with only prompt
+        response = get_bot_response(prompt)
 
-        if file.size > MAX_SIZE or file_ext not in valid_extensions:
-            return JsonResponse({"error": "Invalid file"}, status=400)
+        return JsonResponse({"response": response}, status=200)
+    else:
+        return JsonResponse({"error": "Only POST method allowed"}, status=405)
 
-        file_id = str(uuid4())
-        file_path = os.path.join(UPLOAD_DIR, f"{file_id}_{file.name}")
 
-        with open(file_path, "wb+") as dest:
+@csrf_exempt
+def upload_and_process(request):
+    if request.method == "POST":
+        prompt = request.POST.get('prompt')
+        file = request.FILES.get('file')
+
+        if not file:
+            return JsonResponse({"error": "No file uploaded"}, status=400)
+
+        # Save file locally temporarily
+        file_path = os.path.join(settings.MEDIA_ROOT, file.name)
+        with open(file_path, 'wb+') as destination:
             for chunk in file.chunks():
-                dest.write(chunk)
+                destination.write(chunk)
 
-        # Call the LangChain agent
-        tool_input = f"file_path={file_path}; {prompt}"
-        response = agent.invoke({"input": tool_input})  # remove `await` since it's sync in Django
+        # Process file (example: if CSV)
+        if file.name.endswith('.csv'):
+            df = pd.read_csv(file_path)
+            # Save data into PostgreSQL
+            for _, row in df.iterrows():
+                UploadedFile.objects.create(**row.to_dict())
 
-        answer = response.get("output", "No answer found.")
-        return JsonResponse({"answer": answer, "file_path": file_path})
+        # Now call your LLM and tell it: "use uploaded data"
+        # (You can pass prompt + indicate to LLM that DB has fresh data)
 
-    except Exception as e:
-        return JsonResponse({"error": f"File processing failed: {str(e)}"}, status=500)
+        response = get_bot_response(prompt, use_db=True)
+
+        return JsonResponse({"response": response}, status=200)
+    else:
+        return JsonResponse({"error": "Only POST method allowed"}, status=405)
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from .models import UploadedFile
+import os
+from django.conf import settings
+from django.utils.text import get_valid_filename
+from django.utils import timezone
+
+class FileUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        uploaded_file = request.FILES.get('file')
+        if not uploaded_file:
+            return Response({'error': 'No file uploaded.'}, status=400)
+
+        filename = get_valid_filename(uploaded_file.name)
+        file_path = os.path.join(settings.MEDIA_ROOT, 'user_uploads', filename)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+        # Save file to disk
+        with open(file_path, 'wb+') as destination:
+            for chunk in uploaded_file.chunks():
+                destination.write(chunk)
+
+        # Save file to database
+        uploaded_instance = UploadedFile.objects.create(
+            user=request.user,
+            file='user_uploads/' + filename,
+            filename=uploaded_file.name,
+            uploaded_at=timezone.now()
+        )
+
+        # 🛠 Save uploaded file metadata in session
+        uploaded_files = request.session.get('uploaded_files', {})
+        uploaded_files[uploaded_instance.filename] = uploaded_instance.id
+        request.session['uploaded_files'] = uploaded_files
+        request.session.modified = True
+
+        print(request.session.get('uploaded_files'))
+
+        return Response({
+            'message': 'File uploaded successfully!',
+            'file_id': uploaded_instance.id
+        }, status=201)

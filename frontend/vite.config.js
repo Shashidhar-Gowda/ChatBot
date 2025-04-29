@@ -1,7 +1,7 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import history from 'connect-history-api-fallback'; // Ensure this import is present
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   base: '/',
@@ -10,6 +10,10 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    historyApiFallback: true
-  }
-})
+    port: 3000, // Make sure your port is consistent
+    host: true,
+    middleware: [
+      history(),
+    ],
+  },
+});

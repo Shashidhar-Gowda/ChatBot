@@ -15,10 +15,13 @@ from .tools import (
     polynomial_regression_tool,
     preprocess_tool,
     correlation_tool,
-    prediction_tool,
-    insight_tool,
-    ann_classification_tool,
-    analyze_uploaded_file
+    # prediction_tool,
+    get_report_generator_tool,
+    get_ann_tool,
+    # analyze_uploaded_file,
+    get_history_tool,
+    get_simple_summary_tool,
+    get_dynamic_prediction_tool,
 )
 
 from .sql_agent import sql_tool
@@ -32,13 +35,50 @@ all_tools: List[Tool] = [
     polynomial_regression_tool,
     preprocess_tool,
     correlation_tool,
-    prediction_tool,
-    insight_tool,
-    ann_classification_tool,
-    analyze_uploaded_file,
-    sql_tool
+    # prediction_tool,
+    get_report_generator_tool,
+    get_ann_tool,
+    # analyze_uploaded_file,
+    # sql_tool,
+    get_history_tool,
+    get_simple_summary_tool,
+    get_dynamic_prediction_tool,
 ]
 
+from langchain_core.prompts import PromptTemplate
+summary_prompt = PromptTemplate.from_template("""
+You are an assistant who summarizes tool outputs in plain English.
+Summarize this result in a way that is helpful for a non-technical user.
+
+Output:
+{output}
+""")
+
+def wrap_with_summary(tool: Tool) -> Tool:
+    def wrapped_fn(input_str: str) -> str:
+        try:
+            original_result = tool.invoke({"input_str": input_str})
+            if isinstance(original_result, dict) and "output" in original_result:
+                original_result = original_result["output"]
+        except Exception as e:
+            return f"Tool execution failed: {e}"
+
+        prompt = summary_prompt.format(output=original_result)
+        summary = llm.invoke(prompt).content
+        return f"{original_result}\n\n\ud83d\udca1 Summary: {summary}"
+
+    return Tool.from_function(name=tool.name, func=wrapped_fn, description=tool.description)
+
+# Wrap tools with summaries
+wrapped_tools = [
+    wrap_with_summary(linear_regression_tool),
+    wrap_with_summary(polynomial_regression_tool),
+    wrap_with_summary(correlation_tool),
+    # wrap_with_summary(prediction_tool),
+    wrap_with_summary(get_ann_tool),
+]
+
+all_tools: List[Tool] = wrapped_tools
 # ---------------- Prompt ----------------
 default_prompt = ChatPromptTemplate.from_messages([
     ("system", "You are a smart agent helping with dataset analysis."),
@@ -117,14 +157,18 @@ def route_tool_by_intent(user_message: str, context: Dict[str, Any]) -> (AgentEx
         selected_tools = [preprocess_tool]
     elif re.search(r'\b(correlation|pearson|spearman|relationship)\b', message):
         selected_tools = [correlation_tool]
-    elif re.search(r'\b(predict|forecast|future estimate)\b', message):
-        selected_tools = [prediction_tool]
-    elif re.search(r'\b(insight|summary|analysis report)\b', message):
-        selected_tools = [insight_tool]
+    elif re.search(r'\b(predict|forecast|future estimate|prediction)\b', message):
+        selected_tools = [get_dynamic_prediction_tool]
+    elif re.search(r'\b(insight|reporting|report)\b', message):
+        selected_tools = [get_report_generator_tool]
+    elif re.search(r'\b(average|total|higest|minimum|enteries)\b', message):
+        selected_tools = [get_history_tool]
     elif re.search(r'\b(classification|classify|ann|neural network)\b', message):
-        selected_tools = [ann_classification_tool]
-    elif re.search(r'\b(sql|database|query)\b', message):
-        return create_db_aware_agent(llm), user_message
+        selected_tools = [get_ann_tool]
+    elif re.search(r'\b(summary|summarize)\b', message):
+        selected_tools = [get_simple_summary_tool]    
+    # elif re.search(r'\b(sql|database|query)\b', message):
+    #     return create_db_aware_agent(llm), user_message
 
     if selected_tools:
         return AgentExecutor(

@@ -17,7 +17,7 @@ from rest_framework.decorators import api_view, permission_classes
 from .models import ChatHistory
 from .serializers import UploadedFileSerializer
 from .llm.main import get_bot_response 
-from .mongo_chat_history import save_chat_history as mongo_save_chat_history, get_chat_history_by_session
+from .mongo_chat_history import save_chat_history as mongo_save_chat_history, get_chat_history_by_session, get_grouped_chat_history
 from django.contrib.auth import get_user_model
 from django.shortcuts import render, redirect
 from .models import UploadedFile
@@ -49,8 +49,7 @@ def get_ai_response_view(request):
             return Response({'error': 'Prompt is required'}, status=400)
 
         # Use the new get_bot_response from main.py, passing file_id
-        ai_response = get_bot_response(prompt, file_id=file_id, user=request.user)
-
+        ai_response = get_bot_response(prompt)
 
         # Save chat history in MongoDB
         mongo_save_chat_history(user_id, prompt, ai_response, session_id=None)
@@ -290,3 +289,18 @@ class FileUploadView(APIView):
             'message': 'File uploaded successfully!',
             'file_id': uploaded_instance.id
         }, status=201)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_grouped_chat_history(request):
+    try:
+        # Extract user_id correctly from the authenticated user
+        user_id = request.user.username # Use 'id' if it's the primary key for the user
+        print(f"Fetching chat history for user_id: {user_id}")
+        grouped = get_grouped_chat_history(user_id)
+        print("Grouped chat:", grouped)
+        return Response(grouped)
+    except Exception as e:
+        print("Chat history error:", str(e))
+        return Response({"error": "Unable to fetch chat history"}, status=500)

@@ -32,3 +32,39 @@ def get_user_sessions(user_id: str) -> List[Dict]:
         {"$sort": {"latest_message": -1}}
     ])
     return list(sessions)
+
+from datetime import datetime, timedelta
+from collections import defaultdict
+
+def get_grouped_chat_history(user_id: str, limit_per_group=50) -> Dict[str, List[Dict]]:
+    now = datetime.utcnow()
+    today = now.date()
+    yesterday = today - timedelta(days=1)
+    last_7_days = today - timedelta(days=7)
+
+    raw_chats = collection.find({"user_id": user_id}).sort("timestamp", -1)
+    grouped = defaultdict(list)
+
+    for chat in raw_chats:
+        timestamp = chat["timestamp"]
+        chat_date = timestamp.date()
+        chat_item = {
+            "prompt": chat.get("prompt", ""),
+            "response": chat.get("response", ""),
+            "timestamp": timestamp.isoformat()
+        }
+
+        if chat_date == today:
+            group = "Today"
+        elif chat_date == yesterday:
+            group = "Yesterday"
+        elif chat_date >= last_7_days:
+            group = "Last 7 Days"
+        else:
+            group = chat_date.strftime("%Y-%m-%d")
+
+        if len(grouped[group]) < limit_per_group:
+            grouped[group].append(chat_item)
+
+    return dict(grouped)
+

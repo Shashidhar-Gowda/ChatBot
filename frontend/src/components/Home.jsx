@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../home.css'; // Path to your CSS
 import axios from 'axios';
+import { authFetch } from './utils';
 
 const Home = () => {
     const navigate = useNavigate();
@@ -34,10 +35,42 @@ const Home = () => {
         return cookieValue;
     }
     
+    useEffect(() => {
+        const fetchChatHistory = async () => {
+            try {
+                // Check if token is available in localStorage (or any other source)
+                const token = localStorage.getItem('token'); // Replace with the correct key or source
+        
+                if (!token) {
+                    console.error('No token found');
+                    return; // Early exit if no token is available
+                }
+        
+                const response = await fetch('/api/get_grouped_chat_history/', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Chat History:', data);
+                    // Handle the data
+                } else {
+                    const errorText = await response.text();
+                    console.error('Failed to load chat history:', errorText);
+                    // Handle the error appropriately (show error message to user)
+                }
+            } catch (error) {
+                console.error('Error fetching chat history:', error);
+                // Handle the network error
+            }
+        };                
+        fetchChatHistory();
+    }, []);
+    
 
-    // In Home.js
-
-// In Home.jsx
 
 const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -50,7 +83,7 @@ const handleFileUpload = async (e) => {
         const token = document.cookie.split('; ').find(row => row.startsWith('token='))
             ?.split('=')[1] || localStorage.getItem('token');
 
-        let response = await fetch('http://127.0.0.1:8000/upload-file/', {
+        let response = await authFetch('http://127.0.0.1:8000/upload-file/', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -93,7 +126,7 @@ const sendMessage = async () => {
         let response;
         if (currentSessionId) {
             // Send file_id if available
-            response = await fetch('http://127.0.0.1:8000/api/get_ai_response/', {
+            response = await authFetch('http://127.0.0.1:8000/api/get_ai_response/', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -118,12 +151,20 @@ const sendMessage = async () => {
         }
 
         const data = await response.json();
-        const fullResponse = data.response || 'No response';
+        const { bot_reply, intent, matched_columns, query_used } = data.response || {};
+        const isFileQuery = !!currentSessionId;
 
         const botResponse = {
-            text: fullResponse,
+            text: bot_reply || 'No response.',
             isUser: false,
+            intent: intent || null,
+            matchedColumns: isFileQuery ? matched_columns || [] : [],
+            queryUsed: isFileQuery ? query_used || null : null,
+            followUp: []
         };
+
+
+        
 
         setChatLog(prev => [...prev, botResponse]);
         console.log("Response from server:", data);
@@ -154,14 +195,21 @@ const sendMessage = async () => {
                     <span>+</span> New Chat
                 </button>
                 <div className="conversations-list">
-                    {conversations.map(conv => (
-                        <div key={conv.id} className="conversation-item">
-                            <div className="conversation-name">{conv.name}</div>
-                            <div className="conversation-date">{conv.date}</div>
-                        </div>
-                    ))}
+                    {/* Insert the following code here */}
+                    {Object.keys(conversations).map(section => (
+                        <div key={section}>
+                            <div className="conversation-section-header">{section}</div>
+                                {conversations[section].map((chat, i) => (
+                                    <div key={`${section}-${i}`} className="conversation-item">
+                                        <div className="conversation-name">{chat.prompt.slice(0, 30)}...</div>
+                                        <div className="conversation-date">{new Date(chat.timestamp).toLocaleString()}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        ))}
+                    </div>
                 </div>
-            </div>
+
 
             <div className="main-content">
                 {/* --- Empty State (keep as is) --- */}
@@ -188,6 +236,14 @@ const sendMessage = async () => {
                                         <div className="intent-text-integrated">
                                             ✨ Detected Intent: {message.intent}
                                         </div>
+                                    )}
+                                    {/* ✅ Only show if matchedColumns exist (i.e., file was used) */}
+                                        {!message.isUser && message.matchedColumns?.length > 0 && (
+                                            <div className="intent-text-integrated">📊 Matched Columns: {message.matchedColumns.join(", ")}</div>
+                                    )}
+
+                                        {!message.isUser && message.queryUsed && (
+                                            <div className="intent-text-integrated">🧠 Rewritten Prompt: {message.queryUsed}</div>
                                     )}
 
                                     {/* Render the main message text */}

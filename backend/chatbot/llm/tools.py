@@ -1,4 +1,5 @@
 
+
 import os
 import re
 import pandas as pd
@@ -58,7 +59,7 @@ def perform_linear_regression(file_path: str, target: str, features) -> dict:
     equation = f"{target} = {terms} + {intercept:.4f}"
     return {"equation": equation, "r2_score": r2}
 
-@tool
+@tool()
 def linear_regression_tool(input_str: str, request) -> str:  # Add request
     """Perform linear regression. Format: 'file_path=filename.csv; target=target; features=feat1,feat2,...'"""
     import re
@@ -76,18 +77,70 @@ def linear_regression_tool(input_str: str, request) -> str:  # Add request
 
 # ===========================================================================================
 
-def perform_polynomial_regression(file_path: str, target: str, features: list, degree: int) -> str:
-    df = pd.read_csv(file_path)
-    X = df[features].values
-    y = df[target].values
-    poly = PolynomialFeatures(degree)
-    X_poly = poly.fit_transform(X)
-    model = LinearRegression()
-    model.fit(X_poly, y)
-    score = model.score(X_poly, y)
-    return f"Polynomial Regression (degree={degree}) done.\n📊 R² Score: {score:.4f}"
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
+import numpy as np
 
-@tool
+def perform_polynomial_regression(file_path: str, target: str, features: list, degree: int) -> str:
+    try:
+        df = pd.read_csv(file_path)
+
+        # Validate columns
+        if target not in df.columns:
+            return f"Error: Target column '{target}' not found."
+        for feat in features:
+            if feat not in df.columns:
+                return f"Error: Feature column '{feat}' not found."
+
+        X = df[features].values
+        y = df[target].values
+
+        poly = PolynomialFeatures(degree)
+        X_poly = poly.fit_transform(X)
+
+        model = LinearRegression()
+        model.fit(X_poly, y)
+        score = model.score(X_poly, y)
+        coefs = model.coef_
+        intercept = model.intercept_
+
+        # Build equation string (assuming one feature)
+        equation_terms = [f"{intercept:.2f}"]
+        for i in range(1, len(coefs)):
+            power = i
+            coef = coefs[i]
+            if coef == 0:
+                continue
+            if power == 1:
+                term = f"{coef:+.4f}·x"
+            else:
+                term = f"{coef:+.6f}·x^{power}"
+            equation_terms.append(term)
+        equation = " ".join(equation_terms)
+
+        # Interpret R²
+        if score < 0.2:
+            comment = "📉 The model does not fit the data well — very weak explanatory power."
+        elif score < 0.5:
+            comment = "📈 The model explains some variation, but may not be a strong fit."
+        else:
+            comment = "✅ The model fits the data reasonably well."
+
+        return (
+            f"🎯 Target: {target}\n📌 Feature: {features[0]}\n"
+            f"📐 Polynomial Degree: {degree}\n\n"
+            f"🧮 Model Equation:\n{target} = {equation}\n\n"
+            f"📊 R² Score: {score:.3f}\n\n"
+            f"{comment}\n\n"
+            f"Would you like to try a different degree or add more features?"
+        )
+
+    except Exception as e:
+        return f"Error during polynomial regression: {str(e)}"
+
+
+@tool(return_direct=True)
 def polynomial_regression_tool(input_str: str) -> str:
     """Perform polynomial regression. Format: 'file_path=path; target=target; features=feat1,feat2,...; degree=int'"""
     params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
@@ -155,7 +208,7 @@ def preprocess_dataset(file_name: str) -> str:
 
 from langchain.tools import tool
 
-@tool
+@tool(return_direct=True)
 def preprocess_tool(file_name: str) -> str:
     """
     Cleans and preprocesses a dataset. Provide the CSV file name (not path).
@@ -200,7 +253,7 @@ def perform_correlation_analysis(file_path: str, target: str, features: Union[li
         }
     return results
 
-@tool
+@tool(return_direct=True)
 def correlation_tool(input_str: str) -> str:
     """Perform correlation analysis. Format: 'file_path=path; target=target; features=feat1,feat2,...'"""
     params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
@@ -223,40 +276,11 @@ def correlation_tool(input_str: str) -> str:
 
 # ===========================================================================================
 
-# def predict_future(df, target_column, feature_columns):
-#     df = df.dropna(subset=[target_column] + feature_columns)
-#     X = df[feature_columns]
-#     y = df[target_column]
-#     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-#     model = LinearRegression()
-#     model.fit(X_train, y_train)
-#     preds = model.predict(X_test)
-#     mse = mean_squared_error(y_test, preds)
-#     return {"model": model, "mse": mse, "prediction_example": preds[:5]}
-
-
-
-# def basic_eda(df):
-#     return {
-#         "head": df.head(),
-#         "description": df.describe(),
-#         "missing_values": df.isnull().sum(),
-#         "correlation": df.corr(numeric_only=True)
-#     }
-
-# def generate_charts(df):
-#     numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
-#     for col in numeric_cols:
-#         plt.figure(figsize=(6, 4))
-#         sns.histplot(df[col].dropna(), kde=True)
-#         plt.title(f'Distribution of {col}')
-#         plt.show()
-
 # ===========================================================================================
 
 class ANNClassifier:
-    def __init__(self, file_name):
-        self.df = pd.read_csv(file_name)
+    def __init__(self, file_path):
+        self.df = pd.read_csv(file_path)
         self.model = None
         self.scaler = None
 
@@ -289,10 +313,8 @@ class ANNClassifier:
 
         y_pred = self.model.predict(X_test)
 
-        # Calculate accuracy
         accuracy = accuracy_score(y_test, y_pred)
-        
-        # Return a structured result
+
         return {
             "target": target_column,
             "accuracy": accuracy,
@@ -300,71 +322,62 @@ class ANNClassifier:
             "threshold": actual_threshold
         }
 
-@tool
-def get_ann_tool(file_name: str) -> Tool:
+
+
+@tool(return_direct=True)
+def get_ann_tool(input_str: str, request) -> str:
     """
-    Returns a Tool that performs ANN-based classification on a specified numeric target column.
-    Users must specify the target column using: 'Classify based on <column_name>'.
+    Perform ANN-based classification. Format: 'file_path=filename.csv; target=column_name'
     """
-    real_path = resolve_file_path(file_name)
-    classifier = ANNClassifier(real_path)
+    import re
+    params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
+    file_name = params.get("file_path", "").strip()
+    target_column = params.get("target", "").strip()
 
-    def _run(query: str) -> str:
-        import re
+    if not file_name or not target_column:
+        return "Missing required parameters. Format: 'file_path=filename.csv; target=column_name'"
 
-        # Extract dynamic target column
-        match = re.search(r"classify.*based on (.+)", query.lower())
-        if not match:
-            return "Please specify a target column in the format: 'Classify based on <column_name>'."
+    try:
+        file_path = resolve_file_path(file_name)  # Matches regression tool
+        classifier = ANNClassifier(file_path)     # Use file_path consistently
+        result = classifier.train_ann(target_column=target_column)
 
-        target_column = match.group(1).strip()
-
-        try:
-            # Run the classification
-            result = classifier.train_ann(target_column=target_column)
-
-            return (
-                f"✅ Classification complete for: {result['target']}\n"
-                f"🔸 Accuracy: {result['accuracy']*100:.2f}%\n"
-                f"📘 Threshold used: {result['threshold']}\n"
-                f"🔮 Predictions: {result['predictions'][:10]}..."  # Display the first 10 predictions
-            )
-        except Exception as e:
-            return f"❌ Error: {str(e)}"
-
-    return Tool(
-        name="ANNClassifierTool",
-        func=_run,
-        description=(
-            "Use this tool to run ANN classification on any numeric target column. "
-            "Query format: 'Classify based on <column_name>'."
+        return (
+            f"Classification complete for: {result['target']}\n"
+            f"Accuracy: {result['accuracy']*100:.2f}%\n"
+            f"Threshold used: {result['threshold']}\n"
+            f"Predictions (first 10): {result['predictions'][:10].tolist()}..."
         )
-    )
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
 
 
 # ===========================================================================================
 
 class DatasetReportGenerator:
-    def __init__(self, data_path, model="deepseek-r1-distill-llama-70b"):
-        self.df = pd.read_csv(data_path)
+    def __init__(self, file_path, model="deepseek-r1-distill-llama-70b"):
+        self.df = pd.read_csv(file_path)
         self.llm = ChatGroq(temperature=0.3, model_name=model)
 
     def generate_report(self, _: str) -> str:
-        df = self.df
-        numeric = df.select_dtypes(include='number')
-        summary = numeric.describe().T.round(2).to_string()
-        columns = df.columns.tolist()
+        try:
+            df = self.df
+            numeric = df.select_dtypes(include='number')
+            summary = numeric.describe().T.round(2).to_string()
+            columns = df.columns.tolist()
 
-        prompt = PromptTemplate(
-            input_variables=["columns", "summary"],
-            template="""
+            prompt = PromptTemplate(
+                input_variables=["columns", "summary"],
+                template="""
 You are a data analyst. Based on the dataset below, create a professional business report including:
 
-1. 📈 Executive Summary
-2. 🔢 Key Metrics
-3. 📊 Trends or Observations
-4. 🤝 Feature Relationships
-5. 📌 Recommendations
+1. Executive Summary
+2. Key Metrics 
+3. Trends or Observations
+4. Feature Relationships
+5. Recommendations
 
 Dataset Columns:
 {columns}
@@ -374,29 +387,42 @@ Summary Statistics:
 
 Write the report clearly and concisely:
 """
-        )
+            )
 
-        chain = LLMChain(llm=self.llm, prompt=prompt)
-        return chain.run(columns=", ".join(columns), summary=summary)
-    
+            chain = LLMChain(llm=self.llm, prompt=prompt)
+            return chain.run(columns=", ".join(columns), summary=summary)
 
-@tool
-def get_report_generator_tool(file_name: str) -> Tool:
-    """Returns a Tool that generates a full structured report from the dataset, including summary, trends, and recommendations."""
-    real_path = resolve_file_path(file_name)
-    report_generator = DatasetReportGenerator(real_path)
+        except Exception as e:
+            return f"Report generation failed: {str(e)}"
 
-    return Tool(
-        name="LLMDatasetReportTool",
-        func=report_generator.generate_report,
-        description="Generates a full structured report (summary, trends, recommendations) from the dataset."
-    )
+
+
+@tool(return_direct=True)
+def get_report_generator_tool(input_str: str, request) -> str:
+    """
+    Generate a structured report from the dataset. Format: 'file_path=filename.csv'
+    """
+    import re
+    params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
+    file_name = params.get("file_path", "").strip()
+
+    if not file_name:
+        return "Missing required parameter. Format: 'file_path=filename.csv'"
+
+    try:
+        file_path = resolve_file_path(file_name)
+        report_generator = DatasetReportGenerator(file_path)
+        return report_generator.generate_report("")
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
 
 # ===========================================================================================
     
 class HistoricalQueryTool:
-    def __init__(self, file_name):
-        self.df = pd.read_csv(file_name)
+    def __init__(self, file_path):
+        self.df = pd.read_csv(file_path)
 
     def handle_query(self, query: str) -> str:
         df = self.df.copy()
@@ -416,7 +442,7 @@ class HistoricalQueryTool:
                 break
 
         if not matched_column:
-            return "❌ Couldn't detect a relevant column from your query."
+            return "Couldn't detect a relevant column from your query."
 
         # Filter by year
         if year:
@@ -430,39 +456,45 @@ class HistoricalQueryTool:
 
         # Handle different operations
         if "average" in query or "mean" in query:
-            return f"📊 The average of **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].mean():.2f}`"
+            return f"The average of **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].mean():.2f}`"
         
         if "total" in query or "sum" in query:
-            return f"🧮 The total of **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].sum():,.2f}`"
+            return f"The total of **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].sum():,.2f}`"
         
         if "highest" in query or "maximum" in query or "max" in query:
-            return f"🔺 The highest value of **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].max():,.2f}`"
+            return f"The highest value of **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].max():,.2f}`"
         
         if "lowest" in query or "minimum" in query or "min" in query:
-            return f"🔻 The lowest value of **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].min():,.2f}`"
+            return f"The lowest value of **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].min():,.2f}`"
         
         if "count" in query or "how many" in query:
-            return f"🔢 Number of entries for **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].count():,}`"
+            return f"Number of entries for **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].count():,}`"
 
-        return "❓ Sorry, I couldn't understand your historical question."
+        return "Sorry, I couldn't understand your historical question."
+
+
     
-@tool
-def get_history_tool(file_name: str) -> Tool:
+@tool(return_direct=True)
+def get_history_tool(input_str: str, request) -> str:
     """
-    Returns a Tool for answering historical data questions such as averages, totals, minimums, and maximums.
-    Ideal for queries like 'What was the average market share in 2023?'
+    Answer historical questions. Format: 'file_path=filename.csv; question=What was the total revenue in 2023?'
     """
-    real_path = resolve_file_path(file_name)
-    tool_instance = HistoricalQueryTool(real_path)
+    import re
+    params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
+    file_name = params.get("file_path", "").strip()
+    query = params.get("question", "").strip()
 
-    return Tool(
-        name="HistoricalInsightsTool",
-        func=tool_instance.handle_query,
-        description=(
-            "Use this tool to ask historical questions about numeric values, such as averages, totals, max/min, or counts. "
-            "Example: 'What was the average market share in 2023?'"
-        )
-    )
+    if not file_name or not query:
+        return "Please provide both file_path and question in the format: 'file_path=...; question=...'."
+
+    try:
+        file_path = resolve_file_path(file_name)
+        tool_instance = HistoricalQueryTool(file_path)
+        return tool_instance.handle_query(query)
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
 
 # ===========================================================================================
 
@@ -472,41 +504,55 @@ class SimpleLLMSummarizer:
         self.llm = ChatGroq(temperature=0.3, model_name=model)
 
     def summarize_dataset(self, _: str) -> str:
-
         df = self.df
         columns = df.columns.tolist()
-        #summary_stats = df.describe(include='all').to_string()
 
         prompt = PromptTemplate(
-            input_variables=["columns", "stats"],
+            input_variables=["columns"],
             template="""
 You are a data expert. The user has uploaded a dataset.
 
 Here are the column names:
 {columns}
 
-
 Please write a simple and clear summary of what this dataset contains, highlighting any interesting observations.
 """
         )
 
         chain = LLMChain(llm=self.llm, prompt=prompt)
-        return chain.run(columns=", ".join(columns))
-    
-@tool
-def get_simple_summary_tool(file_name: str) -> Tool:
-    """
-    Returns a Tool that generates a basic LLM-powered summary of the uploaded dataset.
-    Useful for quickly understanding the overall structure and content.
-    """
-    real_path = resolve_file_path(file_name)
-    summarizer = SimpleLLMSummarizer(real_path)
+        
+        try:
+            summary = chain.run(columns=", ".join(columns))
+            return summary
+        except Exception as e:
+            return f"Error during summarization: {str(e)}"
 
-    return Tool(
-        name="LLMDatasetSummarizer",
-        func=summarizer.summarize_dataset,
-        description="Use this tool to get a basic LLM-generated summary of the uploaded dataset."
-    )
+    
+
+
+
+    
+@tool(return_direct=True)
+def get_simple_summary_tool(input_str: str, request) -> str:
+    """
+    Generate a simple LLM-based summary of a dataset.
+    Format: 'file_path=filename.csv'
+    """
+    import re
+    params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
+    file_name = params.get("file_path", "").strip()
+
+    if not file_name:
+        return "Please provide file_path in the format: 'file_path=filename.csv'"
+
+    try:
+        file_path = resolve_file_path(file_name)
+        summarizer = SimpleLLMSummarizer(file_path)
+        return summarizer.summarize_dataset("")
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
 
 # ===========================================================================================
 
@@ -520,7 +566,6 @@ class DynamicANNPredictor:
         keywords = [
             "predict", "classify", "forecast", "estimate", "determine"
         ]
-        # Attempt to extract column name
         for col in self.df.columns:
             if any(k in query.lower() for k in keywords) and col.lower() in query.lower():
                 return col
@@ -547,7 +592,6 @@ class DynamicANNPredictor:
 
     def train_and_predict(self, query: str):
         target_column = self.parse_query(query)
-
         (X_train, X_test, y_train, y_test), threshold = self.prepare_data(target_column)
 
         self.model = MLPClassifier(hidden_layer_sizes=(64, 32), max_iter=500, random_state=42)
@@ -558,95 +602,153 @@ class DynamicANNPredictor:
         low_pct = round(100 - high_pct, 2)
 
         interpretation = (
-            f"📌 Based on your data, the ANN model predicts:\n"
+            f"Based on your data, the ANN model predicts:\n"
             f"- {high_pct}% of cases will have **HIGH** {target_column} (above threshold of {threshold})\n"
             f"- {low_pct}% will be **LOW**.\n\n"
-            f"🧠 This means: most upcoming instances are likely to show "
+            f"This means: most upcoming instances are likely to show "
             f"{'strong' if high_pct > 50 else 'weak'} performance for `{target_column}`."
         )
 
         return interpretation
+
+
    
-@tool
-def get_dynamic_prediction_tool(file_name: str) -> Tool:
+@tool(return_direct=True)
+def get_dynamic_prediction_tool(input_str: str, request) -> str:
     """
-    Returns a Tool that uses an ANN model to make predictions from the dataset
-    based on a user query (e.g., 'Predict high or low CLI this week').
+    Uses an ANN to classify a target column into high/low classes based on a query.
+    Format: 'file_path=filename.csv; question=your prediction query'
+    Example: 'file_path=data.csv; question=Predict CLI for this quarter'
     """
-    real_path = resolve_file_path(file_name)
-    predictor = DynamicANNPredictor(real_path)
+    import re
+    params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
+    file_name = params.get("file_path", "").strip()
+    query = params.get("question", "").strip()
 
-    def _run(query: str) -> str:
-        try:
-            return predictor.train_and_predict(query)
-        except Exception as e:
-            return f"❌ Error: {str(e)}"
+    if not file_name or not query:
+        return "Please provide both file_path and question in the format: 'file_path=filename.csv; question=your query'"
 
-    return Tool(
-        name="DynamicANNPredictionTool",
-        func=_run,
-        description="Use this tool to make predictions based on user query and dataset. Example: 'Predict high or low CLI this week'"
-    )
+    try:
+        file_path = resolve_file_path(file_name)
+        predictor = DynamicANNPredictor(file_path)
+        return predictor.train_and_predict(query)
+    except Exception as e:
+        return f"Error: {str(e)}"
 
-# ===========================================================================================
+
+# # ======================================================================
+
+class LLMVisualizationGenerator:
+    def __init__(self, file_path, model="deepseek-r1-distill-llama-70b"):
+        self.df = pd.read_csv(file_path)
+        self.llm = ChatGroq(temperature=0.3, model_name=model)
+    def generate_code(self, question: str) -> str:
+        columns = self.df.columns.tolist()
+        prompt = PromptTemplate(
+            input_variables=["columns", "question"],
+            template="""
+You are a Python data visualization expert. The user has provided a dataset with the following columns:
+{columns}
+User's visualization request: {question}
+Write Python code using matplotlib or seaborn to generate the plot. Make sure to include import statements, use 'df' as the dataframe name, and ensure the plot is meaningful based on the column types.
+Output only the code, inside a Python code block.
+"""
+        )
+        chain = LLMChain(llm=self.llm, prompt=prompt)
+        return chain.run(columns=", ".join(columns), question=question)
+@tool("llm_visualization", return_direct=True)
+def get_visualization_tool(input_str: str, request) -> str:
+    """
+    Returns matplotlib/seaborn code generated by an LLM based on the dataset and question.
+    Format: 'file_path=filename.csv; question=your visualization request'
+    """
+    import re
+    params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
+    file_name = params.get("file_path", "").strip()
+    query = params.get("question", "").strip()
+    if not file_name or not query:
+        return "Please provide both file_path and question in the format: 'file_path=filename.csv; question=your query'"
+    try:
+        file_path = resolve_file_path(file_name)
+        generator = LLMVisualizationGenerator(file_path)
+        return generator.generate_code(query)
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+# # ======================================================================
+# class VisualizationTool:
+#     def __init__(self, data_path):
+#         self.df = pd.read_csv(data_path)
+
+#     def parse_columns(self, query: str):
+#         cols = self.df.columns.tolist()
+#         matched = []
+#         for word in query.lower().split():
+#             match = get_close_matches(word, cols, n=1, cutoff=0.6)
+#             if match:
+#                 matched.append(match[0])
+#         return list(dict.fromkeys(matched))  # remove duplicates
+
+#     def generate_plot_code(self, query: str):
+#         columns = self.parse_columns(query)
+
+#         if len(columns) == 0:
+#             return "No matching columns found in your query."
+
+#         if "histogram" in query.lower() or "distribution" in query.lower():
+#             col = columns[0]
+#             return f"""```python
+# import matplotlib.pyplot as plt
+
+# plt.figure(figsize=(8, 5))
+# plt.hist(df['{col}'].dropna(), bins=30, color='skyblue', edgecolor='black')
+# plt.title('Histogram of {col}')
+# plt.xlabel('{col}')
+# plt.ylabel('Frequency')
+# plt.grid(True)
+# plt.show()
+# ```"""
+
+#         if "scatter" in query.lower() or "plot" in query.lower() or len(columns) == 2:
+#             if len(columns) < 2:
+#                 return "Need two columns for a scatterplot."
+#             col1, col2 = columns[:2]
+#             return f"""```python
+# import matplotlib.pyplot as plt
+
+# plt.figure(figsize=(8, 5))
+# plt.scatter(df['{col1}'], df['{col2}'], alpha=0.7, color='green')
+# plt.title('Scatterplot of {col1} vs {col2}')
+# plt.xlabel('{col1}')
+# plt.ylabel('{col2}')
+# plt.grid(True)
+# plt.show()
+# ```"""
+
+#         return "Couldn't determine plot type. Please ask for 'histogram' or 'scatterplot'."
 
 # @tool
-# def prediction_tool(input_str: str) -> str:
-#     """Builds a prediction model for future estimates."""
+# def get_visualization_tool(input_str: str, request) -> str:
+#     """
+#     Returns matplotlib code for histograms or scatterplots from your dataset.
+#     Format: 'file_path=filename.csv; question=your visualization request'
+#     Example: 'file_path=data.csv; question=Plot scatter between trust and share'
+#     """
+#     import re
 #     params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
-#     file_path = params.get("file_path", "").strip()
-#     try:
-#         real_path = resolve_file_path(file_path)
-#         df = pd.read_csv(real_path)
+#     file_name = params.get("file_path", "").strip()
+#     query = params.get("question", "").strip()
 
-#     except Exception as e:
-#         return f"Error loading file: {str(e)}"
-#     return handle_prediction_questions(params.get("query", ""), df)
-
-
-# ============================== TOOL WRAPPERS ==============================
-
-from django.core.files.storage import default_storage
-from ..models import UploadedFile  # Import your Django model
-
-
-# @tool
-# def analyze_uploaded_file(input_str: str) -> str: 
-#     """Analyze an uploaded file given its file_id."""
-#     file_id = input_str.strip()  # The input_str is expected to be the file_id
-
-#     if not file_id:
-#         return "Please provide a file ID."
+#     if not file_name or not query:
+#         return "Please provide both file_path and question in the format: 'file_path=filename.csv; question=your query'"
 
 #     try:
-#         uploaded_file_instance = UploadedFile.objects.get(id=file_id) 
-#         file_path = default_storage.path(uploaded_file_instance.file.name)  
-#         df = pd.read_csv(file_path)
-#         return f"Analysis results:\n\n{df.head().to_markdown(index=False, numalign='left', stralign='left')}"
-#     except UploadedFile.DoesNotExist:
-#         return f"File not found with ID: {file_id}"
-#     except Exception as e:
-#         return f"Error analyzing file: {e}"
-
-
-
-
-# def handle_prediction_questions(query: str, df: pd.DataFrame) -> str:
-#     query_lower = query.lower()
-#     columns = df.columns.tolist()
-#     if not any(word in query_lower for word in ["predict", "forecast", "estimate", "future"]):
-#         return "This doesn't look like a prediction query."
-#     mentioned = [col for col in columns if col.lower() in query_lower]
-#     if not mentioned:
-#         return "Couldn't detect a target column."
-#     target = mentioned[-1]
-#     features = [col for col in columns if col != target]
-#     try:
-#         result = predict_future(df, target, features)
-#         preds = ", ".join([f"{p:.2f}" for p in result["prediction_example"]])
-#         return f"Model trained to predict `{target}`\n📊 MSE: {result['mse']:.2f}\nPredictions: {preds}"
+#         file_path = resolve_file_path(file_name)
+#         viz_tool = VisualizationTool(file_path)
+#         return viz_tool.generate_plot_code(query)
 #     except Exception as e:
 #         return f"Error: {str(e)}"
 
 
-#  ============================== NEW: ANN CLASSIFIER ==============================
+

@@ -42,7 +42,7 @@ SECRET_KEY = 'django-insecure-%pip@l9cra!+(1_cg2gjo#1f-=a)28h8et=la)0nf62m5t%k)p
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', "backend"]
+ALLOWED_HOSTS = ["*"]
 
 MONGO_URL = 'mongodb://mongo:27017/'
 
@@ -70,6 +70,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'channels',
+    'storages',
 ]
 
 CORS_ALLOWED_ORIGINS = [
@@ -82,6 +83,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:8000",
     "http://127.0.0.1:8001",
     "http://frontend:3000",
+    "https://frontend02-954262837366.us-central1.run.app"
 ]
 
 CORS_ALLOW_METHODS = [
@@ -160,8 +162,32 @@ REST_FRAMEWORK = {
     ),
 }
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+
+# Google Cloud Storage Settings
+DEFAULT_FILE_STORAGE = 'storages.backends.gcloud.GoogleCloudStorage'
+
+# GCS Bucket Name (You can set it through environment variables for security)
+GS_BUCKET_NAME = os.getenv('GS_BUCKET_NAME', 'your-bucket-name')
+
+# Optionally, set the GCS credentials file path (use environment variable for better security)
+GOOGLE_APPLICATION_CREDENTIALS = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', '/path/to/your/service-account-file.json')
+
+# Media URL Configuration for GCS
+MEDIA_URL = f'https://storage.googleapis.com/{GS_BUCKET_NAME}/'
+
+# Optionally, define cache control settings for media files (e.g., for caching on CDN)
+GS_DEFAULT_ACL = 'publicRead'  # Make files publicly readable if needed
+
+[
+    {
+        "origin": ["*"],  # Allows requests from any origin, change as needed for security
+        "method": ["GET", "HEAD", "OPTIONS"],  # Specify allowed methods
+        "responseHeader": ["Content-Type"],  # Specify allowed response headers
+        "maxAgeSeconds": 3600  # Set cache time for preflight responses
+    }
+]
+
 
 
 TEMPLATES = [
@@ -187,14 +213,12 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'chatbot',
-        'USER': 'root',
-        'PASSWORD': 'root',
-        'HOST': 'localhost',
-        'PORT': '5432',
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / "db.sqlite3",
     }
 }
+
+
 
 
 

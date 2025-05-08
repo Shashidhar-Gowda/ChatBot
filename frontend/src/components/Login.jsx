@@ -13,11 +13,12 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const navigate = useNavigate();
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
   const handleLogin = async (e) => {
     e.preventDefault();
       try {
-        const res = await axios.post("http://127.0.0.1:8000/api/login/", {
+        const res = await axios.post(`${API_BASE_URL}/api/login/`, {
           email,
           password,
         });

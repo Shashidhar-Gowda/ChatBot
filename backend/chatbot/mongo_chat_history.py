@@ -3,10 +3,16 @@ from pymongo import MongoClient
 from typing import List, Dict, Optional
 from datetime import datetime
 
-MONGO_URI = "mongodb://localhost:27017/chatbot_db"
+import os
+from pymongo import MongoClient
+
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")  # fallback if not set
 client = MongoClient(MONGO_URI)
 db = client["chatbot_db"]
 collection = db["chat_history"]
+
+
+
 
 def save_chat_history(user_id: str, prompt: str, response: str, session_id: Optional[str] = None) -> None:
     chat_doc = {

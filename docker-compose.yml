@@ -9,11 +9,11 @@ services:
     depends_on:
       - mongo
     environment:
-      - MONGO_URI=mongodb://mongo:27017/chatbot_history
+      - MONGO_URI=mongodb+srv://Shashidhar:Shashi2002@cluster0.gcjaelb.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
       - GROQ_API_KEY=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
-      # Add any other environment variables your Django app needs
     ports:
       - "8000:8000"
+
   frontend:
     build:
       context: .
@@ -31,11 +31,10 @@ services:
     restart: unless-stopped
     volumes:
       - mongo_data:/data/db
-    # environment:
-    #   - MONGO_INITDB_ROOT_USERNAME=admin
-    #   - MONGO_INITDB_ROOT_PASSWORD=your_secure_password
+
 volumes:
   mongo_data:
+
 networks:
   default:
     name: lanchain_default

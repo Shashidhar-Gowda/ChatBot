@@ -1,22 +1,26 @@
-# Stage 1: Build the frontend
-FROM node:18-alpine AS frontend-build
-WORKDIR /app/frontend
+# Stage 1: Build React
+FROM node:18-alpine AS build
+WORKDIR /app
 
-# Copy package files and install dependencies
+# Accept the API URL as a build-time argument
+ARG REACT_APP_API_URL
+
+# Define it as an environment variable so React sees it
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
+
+
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm install --no-cache
-
-# Copy remaining frontend code and build
+RUN npm install
 COPY frontend/ ./
 RUN npm run build
 
-# Stage 2: Final image - Nginx to serve the built React app
+# Stage 2: Serve with nginx
 FROM nginx:alpine
-# Copy the built frontend code into Nginx's default serve directory
-COPY --from=frontend-build /app/frontend/dist /usr/share/nginx/html
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Expose port 80 to serve the app
+# Optional: copy Django static files if needed
+# COPY backend/static_collected /app/static_collected
+
 EXPOSE 80
-
-# Use the default Nginx configuration
 CMD ["nginx", "-g", "daemon off;"]

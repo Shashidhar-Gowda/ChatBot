@@ -36,7 +36,7 @@ def detect_intent(user_query: str) -> str:
     try:
         # Step 1: Format prompt and invoke model
         prompt = intent_prompt.format(user_query=user_query)
-        response = chat_llm([HumanMessage(content=prompt)])
+        response = chat_llm.invoke([HumanMessage(content=prompt)])
         full_text = response.content.strip()
 
         # Step 2: Clean out <think> blocks and line breaks

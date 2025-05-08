@@ -17,6 +17,7 @@ cycler==0.12.1
 dataclasses-json==0.6.7
 distro==1.9.0
 Django==5.2
+django-storages
 django-cors-headers==4.7.0
 djangorestframework==3.16.0
 djangorestframework_simplejwt==5.5.0
@@ -35,12 +36,14 @@ frozenlist==1.5.0
 fsspec==2025.3.2
 google-api-core==2.24.2
 google-auth==2.38.0
+google-cloud-storage
 google-cloud-bigquery==3.31.0
 google-cloud-core==2.4.3
 google-crc32c==1.7.1
 google-resumable-media==2.7.2
 googleapis-common-protos==1.69.2
 groq==0.22.0
+fuzzywuzzy
 grpcio==1.72.0rc1
 grpcio-status==1.72.0rc1
 gunicorn>=21.2.0
@@ -69,6 +72,7 @@ langgraph-checkpoint==2.0.24
 langgraph-prebuilt==0.1.8
 langgraph-sdk==0.1.61
 langsmith==0.1.147
+langchain_experimental
 lxml==5.3.2
 MarkupSafe==3.0.2
 marshmallow==3.26.1

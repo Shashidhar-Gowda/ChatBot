@@ -14,6 +14,7 @@ const Home = () => {
     const [conversations, setConversations] = useState([]); // For sidebar
     const fileInputRef = useRef(null); // For file input
     const messagesEndRef = useRef(null);
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -46,7 +47,7 @@ const Home = () => {
                     return; // Early exit if no token is available
                 }
         
-                const response = await fetch('/api/get_grouped_chat_history/', {
+                const response = await fetch(`${API_BASE_URL}/api/get_grouped_chat_history/`, {
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -83,7 +84,7 @@ const handleFileUpload = async (e) => {
         const token = document.cookie.split('; ').find(row => row.startsWith('token='))
             ?.split('=')[1] || localStorage.getItem('token');
 
-        let response = await authFetch('http://127.0.0.1:8000/upload-file/', {
+        let response = await authFetch(`${API_BASE_URL}/upload-file/`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -126,7 +127,7 @@ const sendMessage = async () => {
         let response;
         if (currentSessionId) {
             // Send file_id if available
-            response = await authFetch('http://127.0.0.1:8000/api/get_ai_response/', {
+            response = await authFetch(`${API_BASE_URL}/api/get_ai_response/`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -136,7 +137,7 @@ const sendMessage = async () => {
             });
         } else {
             // Send only prompt if no file_id
-            response = await fetch('http://127.0.0.1:8000/api/get_ai_response/', {
+            response = await fetch(`${API_BASE_URL}/api/get_ai_response/`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -237,7 +238,7 @@ const sendMessage = async () => {
                                             ✨ Detected Intent: {message.intent}
                                         </div>
                                     )}
-                                    {/* ✅ Only show if matchedColumns exist (i.e., file was used) */}
+                                    {/*Only show if matchedColumns exist (i.e., file was used) */}
                                         {!message.isUser && message.matchedColumns?.length > 0 && (
                                             <div className="intent-text-integrated">📊 Matched Columns: {message.matchedColumns.join(", ")}</div>
                                     )}

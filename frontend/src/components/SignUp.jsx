@@ -6,6 +6,7 @@ const SignUp = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
   const handleSignup = async (e) => {
     e.preventDefault();
@@ -18,10 +19,11 @@ const SignUp = () => {
     try {
       setLoading(true);
       const response = await axios.post(
-        "http://127.0.0.1:8000/api/signup/",
+        `${API_BASE_URL}/api/signup/`,
         { email, password },
         { headers: { "Content-Type": "application/json" } }
       );
+      
 
       setLoading(false);
       alert("Signup successful! Please log in.");

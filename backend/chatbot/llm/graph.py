@@ -9,11 +9,18 @@ class AgentState(TypedDict):
     context: Annotated[Dict[str, Any], "Contextual information (e.g., uploaded files)"]  # Add context
 
 def agent_router_node(state: AgentState):
-    user_message = state["messages"][-1].content
-    executor, updated_user_message = route_tool_by_intent(user_message, state["context"])
+    last_message_content = state["messages"][-1].content
+
+    # Safely extract user_message, handling both string and dict
+    user_message = last_message_content if isinstance(last_message_content, str) else last_message_content.get("user_message", "")
+
+    executor, tool_output = route_tool_by_intent(user_message, state["context"])
+
+    # Safely extract user_message for HumanMessage, handling both string and dict
+    next_message_content = tool_output.get("user_message", "") if isinstance(tool_output, dict) else str(tool_output)
 
     result = executor.invoke({
-        "messages": [HumanMessage(content=updated_user_message)]
+        "messages": [HumanMessage(content=next_message_content)]
     })
 
     bot_response = result.get("output", "Sorry, I couldn't understand that.")

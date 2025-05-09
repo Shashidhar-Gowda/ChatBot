@@ -18,13 +18,21 @@ from django.conf import settings
 
 def resolve_file_path(filename: str) -> str:
     """
-    Resolve the full file path from a filename (e.g., 'sales_data.csv')
-    stored in MEDIA_ROOT/user_uploads/.
+    Resolve the full file path for an uploaded file.
+
+    This function constructs the path relative to the MEDIA_ROOT.
+    It does NOT assume the current working directory.
 
     Args:
-        filename (str): The name of the file uploaded by the user.
+        filename (str): The name of the file (e.g., 'data.csv').
 
     Returns:
-        str: Full path to the file on local disk.
+        str: The full, absolute path to the file.
     """
-    return os.path.join(settings.MEDIA_ROOT, 'user_uploads', filename)
+    # Construct the path relative to MEDIA_ROOT
+    full_path = os.path.join(settings.MEDIA_ROOT, 'user_uploads', filename)
+
+    # Ensure the path is absolute (more robust)
+    full_path = os.path.abspath(full_path)  # Add this line?
+
+    return full_path

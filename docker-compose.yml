@@ -11,9 +11,10 @@ services:
     environment:
       - MONGO_URI=mongodb://mongo:27017/chatbot_history
       - GROQ_API_KEY=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
-      # Add any other environment variables your Django app needs
     ports:
       - "8000:8000"
+    image: us-central1-docker.pkg.dev/beaming-botany-457907-b7/version01/backendv03:latest  
+
   frontend:
     build:
       context: .
@@ -24,6 +25,7 @@ services:
       - backend
     ports:
       - "3000:80"
+    image: us-central1-docker.pkg.dev/beaming-botany-457907-b7/version01/frontendv03:latest   # <-- Replace with your GCP project and repo
 
   mongo:
     image: mongo:latest
@@ -31,11 +33,10 @@ services:
     restart: unless-stopped
     volumes:
       - mongo_data:/data/db
-    # environment:
-    #   - MONGO_INITDB_ROOT_USERNAME=admin
-    #   - MONGO_INITDB_ROOT_PASSWORD=your_secure_password
+
 volumes:
   mongo_data:
+
 networks:
   default:
     name: lanchain_default

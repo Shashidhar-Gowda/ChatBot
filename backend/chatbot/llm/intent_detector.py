@@ -13,11 +13,11 @@ chat_llm = ChatGroq(
 intent_prompt = ChatPromptTemplate.from_template("""
 You are an intent detection system.
 
-Your task is to classify the user's question into one of the following intents and respond with only the intent name.
+Your task is to classify the user's question into one of the following intents and Respond with ONLY the intent name, exactly as listed above. Do not include any explanation or extra formatting..
 
 Intents:
 - CORRELATION ANALYSIS
-- LINEAR REGRESSION ANALYSIS
+- REGRESSION ANALYSIS
 - CLASSIFICATION
 - HISTORICAL DATA
 - VISUALIZATION
@@ -25,6 +25,7 @@ Intents:
 - REPORTING
 - GREETINGS
 - GENERAL QUESTIONS
+- PREDICTION
 
 User Question: {user_query}
 

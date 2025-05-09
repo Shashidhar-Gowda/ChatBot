@@ -153,7 +153,7 @@ const sendMessage = async () => {
         const data = await response.json();
         const { bot_reply, intent, matched_columns, query_used } = data.response || {};
         const isFileQuery = !!currentSessionId;
-
+        console.log('bot_reply:', bot_reply);
         const botResponse = {
             text: bot_reply || 'No response.',
             isUser: false,

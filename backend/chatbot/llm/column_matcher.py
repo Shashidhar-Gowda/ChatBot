@@ -1,37 +1,29 @@
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langchain_groq import ChatGroq
+from fuzzywuzzy import process
+import re
 
-# Load LLM
-groq_model = ChatGroq(
-    model_name="deepseek-r1-distill-llama-70b",
-    api_key="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",
-    temperature=0.0,
-)
+def clean_column_name(col: str) -> str:
+    return " ".join(col.lower().split())
 
-# Prompt template for column matching
-column_prompt = ChatPromptTemplate.from_template(
+def correct_and_replace_columns(user_query: str, actual_cols: list[str], threshold=80):
     """
-You are an expert data assistant.  
-Given a list of columns from a dataset: {columns}  
-and a user query: {query}
+    Fuzzy-matches potential column references in user query to actual column names,
+    and returns a cleaned query + list of matched column names.
+    """
+    cleaned_actual = [clean_column_name(c) for c in actual_cols]
+    matched = {}
 
-Return only the names of the most relevant column(s) from the list, comma-separated.  
-If no match, return "None".
-Do not invent new columns.
+    # Tokenize the user query into words
+    words = re.findall(r'\w+', user_query)
 
-Example: 
-Columns: ['order_id', 'customer_name', 'total_spend']
-Query: "Show me customer names and spending"
-Answer: customer_name, total_spend
-"""
-)
+    for word in words:
+        cleaned = clean_column_name(word)
+        match, score = process.extractOne(cleaned, cleaned_actual)
+        if score >= threshold:
+            matched[word] = actual_cols[cleaned_actual.index(match)]
 
-# Create column matching chain
-column_chain = column_prompt | groq_model | StrOutputParser()
+    # Replace only whole words in query
+    cleaned_query = user_query
+    for original, corrected in matched.items():
+        cleaned_query = re.sub(rf'\b{re.escape(original)}\b', corrected, cleaned_query)
 
-def match_columns(columns_list, user_query):
-    columns_as_text = ", ".join(columns_list)
-    result = column_chain.invoke({"columns": columns_as_text, "query": user_query})
-    matched_columns = [col.strip() for col in result.split(",") if col.strip()]
-    return matched_columns
+    return cleaned_query, list(matched.values())

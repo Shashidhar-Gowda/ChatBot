@@ -24,6 +24,7 @@ const Login = () => {
     
         const { access, refresh } = res.data;
         localStorage.setItem("token", access);
+        localStorage.setItem('refresh', refresh);
         document.cookie = `token=${access}; path=/; max-age=86400`;
         
         navigate("/chat");

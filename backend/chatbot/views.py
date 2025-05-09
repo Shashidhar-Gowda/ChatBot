@@ -206,8 +206,12 @@ def get_ai_response(request):
 
         # Call your LLM with only prompt
         response = get_bot_response(prompt)
+        print("Prompt:", prompt)
+        print("Response:", response)
 
-        return JsonResponse({"response": response}, status=200)
+        bot_reply = response["messages"][-1].content if response.get("messages") else "No response."
+
+        return JsonResponse({"response": bot_reply}, status=200)
     else:
         return JsonResponse({"error": "Only POST method allowed"}, status=405)
 

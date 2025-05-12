@@ -35,17 +35,35 @@ Do not include any explanation or extra formatting.
 
 def detect_intent(user_query: str) -> str:
     try:
-        # Step 1: Format prompt and invoke model
+        # Basic keyword fallback before LLM call
+        keyword_intents = {
+            r'\b(hi|hello|hey)\b': "GREETINGS",
+            r'\b(correlat|relation|pearson|spearman)\b': "CORRELATION ANALYSIS",
+            r'\b(regress|predict|forecast)\b': "REGRESSION ANALYSIS",
+            r'\b(classify|category|neural network|ann)\b': "CLASSIFICATION",
+            r'\b(visualize|plot|chart|graph)\b': "VISUALIZATION",
+            r'\b(summary|overview)\b': "SUMMARIZATION"
+        }
+        
+        for pattern, intent in keyword_intents.items():
+            if re.search(pattern, user_query, re.IGNORECASE):
+                return intent
+                
+        # Only call LLM if keyword matching fails
         prompt = intent_prompt.format(user_query=user_query)
         response = chat_llm([HumanMessage(content=prompt)])
-        full_text = response.content.strip()
-
-        # Step 2: Clean out <think> blocks and line breaks
-        clean_text = re.sub(r'<think>.*?</think>', '', full_text, flags=re.DOTALL).strip()
-        clean_text = clean_text.replace("\n", "").strip()
-
-        # Step 3: Return uppercase intent
-        return clean_text.upper()
+        clean_text = re.sub(r'<think>.*?</think>', '', response.content, flags=re.DOTALL)
+        clean_text = clean_text.replace("\n", "").strip().upper()
+        
+        # Validate the intent is in our list
+        valid_intents = [
+            "CORRELATION ANALYSIS", "REGRESSION ANALYSIS", "CLASSIFICATION",
+            "HISTORICAL DATA", "VISUALIZATION", "SUMMARIZATION", "REPORTING",
+            "GREETINGS", "GENERAL QUESTIONS", "PREDICTION"
+        ]
+        
+        return clean_text if clean_text in valid_intents else "UNKNOWN"
+        
     except Exception as e:
         print(f"Intent detection failed: {e}")
         return "UNKNOWN"

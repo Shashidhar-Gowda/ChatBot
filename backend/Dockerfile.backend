@@ -45,7 +45,7 @@ COPY --from=backend-build /usr/local/bin /usr/local/bin
 COPY --from=backend-build /app/backend /app/backend
 
 # Copy collected static files
-COPY --from=backend-build /app/backend/static /app/static_collected
+COPY --from=backend-build /app/backend/staticfiles /app/static_collected
 
 # Copy Nginx config and supervisor config
 COPY ../nginx.conf /etc/nginx/conf.d/default.conf

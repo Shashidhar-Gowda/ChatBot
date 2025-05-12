@@ -15,24 +15,53 @@ def get_sql_database():
 
 import os
 from django.conf import settings
-
 def resolve_file_path(filename: str) -> str:
     """
-    Resolve the full file path for an uploaded file.
-
-    This function constructs the path relative to the MEDIA_ROOT.
-    It does NOT assume the current working directory.
-
-    Args:
-        filename (str): The name of the file (e.g., 'data.csv').
-
-    Returns:
-        str: The full, absolute path to the file.
+    More robust file path resolution with validation
     """
-    # Construct the path relative to MEDIA_ROOT
-    full_path = os.path.join(settings.MEDIA_ROOT, 'user_uploads', filename)
+    try:
+        if not filename:
+            raise ValueError("Filename cannot be empty")
+            
+        # Normalize path and prevent directory traversal
+        filename = os.path.normpath(filename).lstrip('/')
+        full_path = os.path.join(settings.MEDIA_ROOT, 'user_uploads', filename)
+        full_path = os.path.abspath(full_path)
+        
+        # Security check - ensure path is within MEDIA_ROOT
+        if not full_path.startswith(os.path.abspath(settings.MEDIA_ROOT)):
+            raise ValueError("Invalid file path - outside of allowed directory")
+            
+        # Check file exists
+        if not os.path.exists(full_path):
+            raise FileNotFoundError(f"File not found at path: {full_path}")
+            
+        return full_path
+    except Exception as e:
+        print(f"File path resolution error: {e}")
+        raise  # Re-raise for calling code to handle
 
-    # Ensure the path is absolute (more robust)
-    full_path = os.path.abspath(full_path)  # Add this line?
-
-    return full_path
+# In utils.py, add:
+def parse_tool_input(input_str: str, context: dict) -> str:
+    """
+    Normalize tool input parameters based on context.
+    Returns properly formatted input string for tools.
+    """
+    # If it's already in param=value format, return as-is
+    if '=' in input_str:
+        return input_str
+        
+    # Special cases for file-based tools
+    file_tools = [
+        'get_report_generator_tool',
+        'get_simple_summary_tool',
+        'linear_regression_tool',
+        'polynomial_regression_tool',
+        # Add other file-based tools...
+    ]
+    
+    current_tool = context.get('current_tool')
+    if current_tool in file_tools and context.get('file_id'):
+        return f"file_path={context['file_id']}"
+        
+    return input_str

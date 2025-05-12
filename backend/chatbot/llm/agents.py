@@ -11,6 +11,9 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from .intent_detector import detect_intent
+import os
+from django.conf import settings
+from typing import Dict, Any
 
 # Import your existing tools
 from .tools import (
@@ -18,15 +21,14 @@ from .tools import (
     polynomial_regression_tool,
     preprocess_tool,
     correlation_tool,
-    # prediction_tool,
     get_report_generator_tool,
     get_ann_tool,
-    # analyze_uploaded_file,
     get_history_tool,
     get_simple_summary_tool,
     get_dynamic_prediction_tool,
     get_visualization_tool,
 )
+
 
 from .sql_agent import sql_tool
 
@@ -188,66 +190,113 @@ llm_agent_executor = AgentExecutor(
 )
 
 # ---------------- Context-Aware Agent Router ----------------
+def validate_file_path(file_id: str) -> bool:
+    """
+    Validate that a file exists at the given path.
+    
+    Args:
+        file_id: The file identifier or path to validate
+        
+    Returns:
+        bool: True if file exists and is valid, False otherwise
+    """
+    try:
+        # Construct the expected file path
+        file_path = os.path.join(settings.MEDIA_ROOT, 'user_uploads', str(file_id))
+        
+        # Check if file exists and is accessible
+        if not os.path.exists(file_path):
+            return False
+            
+        # Optional: Add additional validation checks here
+        # For example, check file size, extension, etc.
+        
+        return True
+    except Exception:
+        return False
 
 def route_tool_by_intent(user_message: str, context: Dict[str, Any]) -> (AgentExecutor, str):
-    message = user_message.lower()
-    uploaded_files = context.get("uploaded_files", {})
+    try:
+        message = user_message.lower()
+        uploaded_files = context.get("uploaded_files", {})
 
-    print("\n--- Agent Routing Debugging ---")  # Start of routing log
-    print(f"User Message: {user_message}")
+        # Intent Detection with fallback
+        try:
+            intent = detect_intent(user_message)
+        except Exception as e:
+            print(f"Intent detection failed: {e}")
+            intent = "UNKNOWN"
+        
+        # Short-circuit for simple intents
+        if intent in ["GREETINGS", "GENERAL QUESTIONS"]:
+            return general_chat_executor, user_message
+        
+        # File handling with validation
+        if uploaded_files:
+            for filename, file_id in uploaded_files.items():
+                if filename.lower() in message:
+                    if not validate_file_path(file_id):  # Add this validation
+                        return general_chat_executor, "File path is invalid. Please re-upload your file."
+                    context["file_id"] = str(file_id)
+                    break
 
-    # Intent Detection
-    intent = detect_intent(user_message)
-    print(f"  - Detected Intent: {intent}")
+        # Regex Tool Matching
+        regex_tool_map = [
+            (r'\b(linear regression|simple regression|regression equation)\b', linear_regression_tool),
+            (r'\b(polynomial regression|curve fitting|nonlinear regression)\b', polynomial_regression_tool),
+            (r'\b(preprocess|clean|missing values|data cleaning)\b', preprocess_tool),
+            (r'\b(correlation|pearson|spearman|relationship|relation)\b', correlation_tool),
+            (r'\b(predict|forecast|future estimate|prediction)\b', get_dynamic_prediction_tool),
+            (r'\b(insight|reporting|report)\b', get_report_generator_tool),
+            (r'\b(average|total|highest|maximum|min|lowest|entries|count|how many|mean)\b', get_history_tool),
+            (r'\b(classification|classify|ann|neural network)\b', get_ann_tool),
+            (r'\b(summary|summarize)\b', get_simple_summary_tool),
+        ]
+        
+        
+        # In agents.py, modify the regex tool matching section:
+        for pattern, tool in regex_tool_map:
+            if re.search(pattern, message):
+                print(f"  - Regex matched tool: {tool.name}")
+                
+                # Special handling for tools that need file_path parameter
+                if tool.name in ['get_report_generator_tool', 'get_simple_summary_tool'] and context.get('file_id'):
+                    tool_input = f"file_path={context['file_id']}"
+                    return AgentExecutor(
+                        agent=create_tool_calling_agent(llm=llm, tools=[tool], prompt=default_prompt),
+                        tools=[tool],
+                        verbose=True,
+                        handle_parsing_errors=True
+                    ), tool_input
+                
+                return AgentExecutor(
+                    agent=create_tool_calling_agent(llm=llm, tools=[tool], prompt=default_prompt),
+                    tools=[tool],
+                    verbose=True,
+                    handle_parsing_errors=True
+                ), user_message
 
-    # Short-circuit for simple intents
-    if intent in ["GREETINGS", "GENERAL QUESTIONS"]:
-        print("  - Directly routing to General Chat Agent for greeting or general question.")
-        return general_chat_executor, user_message
-    
-    
+        # LLM-Based Tool Selection (Fallback)
+        print("  - No Regex match. Invoking LLM Tool Selection Agent...")
+        try:
+            tool_result = tool_selection_executor.invoke({"user_question": user_message})
+            tool_name = tool_result["output"]
+            if tool_name != "NONE":
+                selected_tool = next((tool for tool in all_tools if tool.name == tool_name), None)
+                if selected_tool:
+                    print(f"  - LLM selected tool: {selected_tool.name}")
+                    return AgentExecutor(
+                        agent=create_tool_calling_agent(llm=llm, tools=[selected_tool], prompt=default_prompt),
+                        tools=[selected_tool],
+                        verbose=True,
+                        handle_parsing_errors=True
+                    ), user_message
+        except Exception as e:
+            print(f"Tool selection failed: {e}")
 
-    # Try matching uploaded file names
-    if uploaded_files:
-        # Exact match first
-        for filename, file_id in uploaded_files.items():
-            if filename.lower() in message:
-                context["file_id"] = str(file_id)
-                user_message = user_message.replace(filename, uploaded_files[filename])
-                break
-
-    # Regex Tool Matching
-    regex_tool_map = [
-        (r'\b(linear regression|simple regression|regression equation)\b', linear_regression_tool),
-        (r'\b(polynomial regression|curve fitting|nonlinear regression)\b', polynomial_regression_tool),
-        (r'\b(preprocess|clean|missing values|data cleaning)\b', preprocess_tool),
-        (r'\b(correlation|pearson|spearman|relationship|relation)\b', correlation_tool),
-        (r'\b(predict|forecast|future estimate|prediction)\b', get_dynamic_prediction_tool),
-        (r'\b(insight|reporting|report)\b', get_report_generator_tool),
-        (r'\b(average|total|highest|maximum|min|lowest|entries|count|how many|mean)\b', get_history_tool),
-        (r'\b(classification|classify|ann|neural network)\b', get_ann_tool),
-        (r'\b(summary|summarize)\b', get_simple_summary_tool),
-    ]
-    for pattern, tool in regex_tool_map:
-        if re.search(pattern, message):
-            print(f"  - Regex matched tool: {tool.name}")
-            return AgentExecutor(agent=create_tool_calling_agent(llm=llm, tools=[tool], prompt=default_prompt),
-                                 tools=[tool], verbose=True, handle_parsing_errors=True), user_message
-
-    # LLM-Based Tool Selection (Fallback)
-    print("  - No Regex match. Invoking LLM Tool Selection Agent...")
-    tool_result = tool_selection_executor.invoke({"user_question": user_message})
-    tool_name = tool_result["output"]
-    if tool_name != "NONE":
-        selected_tool = next((tool for tool in all_tools if tool.name == tool_name), None)
-        if selected_tool:
-            print(f"  - LLM selected tool: {selected_tool.name}")
-            return AgentExecutor(
-                agent=create_tool_calling_agent(llm=llm, tools=[selected_tool], prompt=default_prompt),
-                tools=[selected_tool],
-                verbose=True,
-                handle_parsing_errors=True
-            ), user_message
+    except Exception as e:
+        print(f"Error in route_tool_by_intent: {e}")
+        # Fall through to general chat
 
     # Final Fallback to General Chat
     print("  - No tool selected by Regex or LLM. Routing to General Chat.")

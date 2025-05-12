@@ -29,6 +29,15 @@ from django.core.files.storage import default_storage
 from ..models import UploadedFile  # Import your Django model
 from typing import Union
 from sklearn.metrics import accuracy_score
+from typing import List  
+import pandas as pd
+import numpy as np
+from pathlib import Path
+from django.conf import settings
+from typing import Union
+from langchain.tools import tool
+from fuzzywuzzy import process
+from .column_matcher import correct_and_replace_columns  # Import the column matcher
 
 
 # Instantiate LLM
@@ -36,17 +45,49 @@ llm = ChatGroq(model="deepseek-r1-distill-llama-70b")
 
 # ============================== BASE FUNCTIONS ==============================
 
+def resolve_file_path(file_name: str) -> str:
+    """Resolve file path with Django media directory handling"""
+    # Check in user_uploads directory first
+    user_uploads_path = os.path.join(settings.MEDIA_ROOT, 'user_uploads', file_name)
+    if os.path.exists(user_uploads_path):
+        return user_uploads_path
+    
+    # Check in media root directly
+    media_path = os.path.join(settings.MEDIA_ROOT, file_name)
+    if os.path.exists(media_path):
+        return media_path
+    
+    # Check current directory (for backward compatibility)
+    current_path = os.path.join(os.getcwd(), file_name)
+    if os.path.exists(current_path):
+        return current_path
+    
+    # Return the most likely path for error reporting
+    return user_uploads_path
 
 def get_column_names(file_path: str) -> str:
     df = pd.read_csv(file_path)
     return f"Columns: {', '.join(df.columns)}"
 
+
+# def tool_error_handler(func):
+#     def wrapper(*args, **kwargs):
+#         try:
+#             return func(*args, **kwargs)
+#         except pd.errors.EmptyDataError:
+#             return "Error: The file is empty or corrupt."
+#         except FileNotFoundError:
+#             return "Error: File not found. Please check the file path."
+#         except Exception as e:
+#             print(f"Tool error: {e}")
+#             return f"Error processing request: {str(e)}"
+#     return wrapper
+
+
 # ===========================================================================================
 
-def perform_linear_regression(file_path: str, target: str, features) -> dict:
+def perform_linear_regression(file_path: str, target: str, features: List[str]) -> dict:
     df = pd.read_csv(file_path)
-    if isinstance(features, str):
-        features = [f.strip() for f in features.split(",")]
     df = df[features + [target]].dropna()
     X = df[features]
     y = df[target]
@@ -59,26 +100,82 @@ def perform_linear_regression(file_path: str, target: str, features) -> dict:
     equation = f"{target} = {terms} + {intercept:.4f}"
     return {"equation": equation, "r2_score": r2}
 
-@tool()
-def linear_regression_tool(input_str: str, request) -> str:  # Add request
-    """Perform linear regression. Format: 'file_path=filename.csv; target=target; features=feat1,feat2,...'"""
-    import re
+@tool(return_direct=True)
+def linear_regression_tool(input_str: str) -> str:
+    """
+    Perform linear regression on a given CSV file.
+    
+    Format: 'file_path=filename.csv; target=target; features=feat1,feat2,...'
+    """
     params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
     file_name = params.get("file_path", "").strip()
     target = params.get("target", "").strip()
-    features = params.get("features", "").split(",")
-
+    features = [f.strip() for f in params.get("features", "").split(",") if f.strip()]
+    
     try:
-        real_path = resolve_file_path(file_name)  # Pass request.user
-        print(f"DEBUG: linear_regression_tool - file_path: {real_path}, target: {target}, features: {features}") 
-        result = perform_linear_regression(real_path, target, features)
-        output = f"Regression Equation: {result['equation']}\n R² Score: {result['r2_score']:.4f}"
-        print(f"DEBUG: linear_regression_tool - output: {output}")  
-        return output
+        # Resolve file path properly
+        real_path = resolve_file_path(file_name)
+        if not os.path.exists(real_path):
+            available_files = [
+                f for f in os.listdir(os.path.join(settings.MEDIA_ROOT, 'user_uploads')) 
+                if f.endswith('.csv')
+            ]
+            return (
+                f"File '{file_name}' not found in uploads directory.\n"
+                f"Available files: {available_files or 'None found'}"
+            )
+        
+        # Load data
+        df = pd.read_csv(real_path)
+        actual_cols = df.columns.tolist()
+        
+        # Improved column matcher
+        def find_best_column_match(input_col: str, available_cols: List[str]) -> str:
+            input_col = input_col.lower().replace("_", "").replace(" ", "")
+            available_clean = [(c, c.lower().replace("_", "").replace(" ", "")) for c in available_cols]
+            
+            # Try exact match first
+            for orig, clean in available_clean:
+                if input_col == clean:
+                    return orig
+            
+            # Try contains match
+            for orig, clean in available_clean:
+                if input_col in clean:
+                    return orig
+            
+            # Try fuzzy match
+            match, score = process.extractOne(input_col, [clean for _, clean in available_clean])
+            if score > 80:  # Only accept good matches
+                return available_cols[[clean for _, clean in available_clean].index(match)]
+            return None
+        
+        # Match target column
+        matched_target = find_best_column_match(target, actual_cols)
+        if not matched_target:
+            return f"Target column '{target}' not found. Available columns: {actual_cols}"
+        
+        # Match feature columns
+        matched_features = []
+        for feat in features:
+            matched = find_best_column_match(feat, actual_cols)
+            if not matched:
+                return f"Feature column '{feat}' not found. Available columns: {actual_cols}"
+            matched_features.append(matched)
+        
+        # Run regression
+        result = perform_linear_regression(real_path, matched_target, matched_features)
+        return (
+            f"Regression Analysis:\n"
+            f"Target: {matched_target}\n"
+            f"Features: {matched_features}\n"
+            f"Equation: {result['equation']}\n"
+            f"R² Score: {result['r2_score']:.4f}"
+        )
+        
     except Exception as e:
-        error_message = f"Error in linear_regression_tool: {str(e)}"
-        print(f"ERROR: {error_message}")  # Log error
-        return error_message
+        return f"Error: {str(e)}"
+
 
 # ===========================================================================================
 
@@ -330,7 +427,7 @@ class ANNClassifier:
 
 
 @tool(return_direct=True)
-def get_ann_tool(input_str: str, request) -> str:
+def get_ann_tool(input_str: str) -> str:
     """
     Perform ANN-based classification. Format: 'file_path=filename.csv; target=column_name'
     """
@@ -401,25 +498,30 @@ Write the report clearly and concisely:
             return f"Report generation failed: {str(e)}"
 
 
-
 @tool(return_direct=True)
-def get_report_generator_tool(input_str: str, request) -> str:
+def get_report_generator_tool(input_str: str) -> str:
     """
-    Generate a structured report from the dataset. Format: 'file_path=filename.csv'
+    Generate a structured report from the dataset. 
+    Accepts either:
+    - Format: 'file_path=filename.csv'
+    - Or just the filename: 'filename.csv'
     """
-    import re
-    params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
-    file_name = params.get("file_path", "").strip()
-
-    if not file_name:
-        return "Missing required parameter. Format: 'file_path=filename.csv'"
-
     try:
+        # Handle both formats
+        if 'file_path=' in input_str:
+            params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
+            file_name = params.get("file_path", "").strip()
+        else:
+            file_name = input_str.strip()  # Assume the whole input is filename
+            
+        if not file_name:
+            return "Please provide a filename. Format: 'file_path=filename.csv' or just 'filename.csv'"
+
         file_path = resolve_file_path(file_name)
         report_generator = DatasetReportGenerator(file_path)
         return report_generator.generate_report("")
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error generating report: {str(e)}"
 
 
 
@@ -480,7 +582,7 @@ class HistoricalQueryTool:
 
     
 @tool(return_direct=True)
-def get_history_tool(input_str: str, request) -> str:
+def get_history_tool(input_str: str) -> str:
     """
     Answer historical questions. Format: 'file_path=filename.csv; question=What was the total revenue in 2023?'
     """
@@ -538,7 +640,7 @@ Please write a simple and clear summary of what this dataset contains, highlight
 
     
 @tool(return_direct=True)
-def get_simple_summary_tool(input_str: str, request) -> str:
+def get_simple_summary_tool(input_str: str) -> str:
     """
     Generate a simple LLM-based summary of a dataset.
     Format: 'file_path=filename.csv'
@@ -619,7 +721,7 @@ class DynamicANNPredictor:
 
    
 @tool(return_direct=True)
-def get_dynamic_prediction_tool(input_str: str, request) -> str:
+def get_dynamic_prediction_tool(input_str: str) -> str:
     """
     Uses an ANN to classify a target column into high/low classes based on a query.
     Format: 'file_path=filename.csv; question=your prediction query'
@@ -661,11 +763,12 @@ Output only the code, inside a Python code block.
         )
         chain = LLMChain(llm=self.llm, prompt=prompt)
         return chain.run(columns=", ".join(columns), question=question)
+    
+
 @tool("llm_visualization", return_direct=True)
-def get_visualization_tool(input_str: str, request) -> str:
-    """
-    Returns matplotlib/seaborn code generated by an LLM based on the dataset and question.
-    Format: 'file_path=filename.csv; question=your visualization request'
+def get_visualization_tool(input_str: str) -> str:
+    """Returns matplotlib/seaborn code generated by an LLM based on the dataset and question.
+    Format: 'file_path=filename.csv; question=your visualization request' 
     """
     import re
     params = dict(re.findall(r'(\w+)=([^;]+)', input_str))

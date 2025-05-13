@@ -51,7 +51,7 @@ def detect_intent(user_query: str) -> str:
                 
         # Only call LLM if keyword matching fails
         prompt = intent_prompt.format(user_query=user_query)
-        response = chat_llm([HumanMessage(content=prompt)])
+        response = chat_llm.invoke([HumanMessage(content=prompt)])
         clean_text = re.sub(r'<think>.*?</think>', '', response.content, flags=re.DOTALL)
         clean_text = clean_text.replace("\n", "").strip().upper()
         

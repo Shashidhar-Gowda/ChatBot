@@ -1,50 +1,76 @@
 # column_matcher.py
 from fuzzywuzzy import process
 import re
-from typing import Tuple, List
+from typing import Tuple, List, Dict, Optional
 
 def clean_column_name(col: str) -> str:
-    """Keep spaces but normalize otherwise"""
+    """Normalize column names for matching"""
     return re.sub(r'[^\w\s]', '', col.lower()).strip()
 
-def correct_and_replace_columns(user_query: str, actual_cols: List[str], threshold: int = 80) -> Tuple[str, List[str]]:
+def find_best_column_match(
+    input_col: str, 
+    available_cols: List[str],
+    threshold: int = 80
+) -> Optional[str]:
     """
-    Fuzzy-matches potential column references in user query to actual column names,
-    and returns a cleaned query + list of matched column names.
+    Find the best matching column name using fuzzy matching.
     
     Args:
-        user_query: The user's input query
-        actual_cols: List of actual column names from the dataset
-        threshold: Minimum fuzzy match score (0-100)
+        input_col: The column name to match
+        available_cols: List of actual column names
+        threshold: Minimum match score (0-100)
         
     Returns:
-        Tuple of (cleaned_query, matched_columns)
+        The best matching column name or None if no good match found
     """
-    cleaned_actual = [clean_column_name(c) for c in actual_cols]
+    input_clean = clean_column_name(input_col)
+    available_clean = [(c, clean_column_name(c)) for c in available_cols]
+    
+    # Try exact match first
+    for orig, clean in available_clean:
+        if input_clean == clean:
+            return orig
+    
+    # Try contains match
+    for orig, clean in available_clean:
+        if input_clean in clean:
+            return orig
+    
+    # Try fuzzy match
+    match, score = process.extractOne(
+        input_clean, 
+        [clean for _, clean in available_clean]
+    )
+    if score >= threshold:
+        return available_cols[[clean for _, clean in available_clean].index(match)]
+    return None
+
+def match_columns(
+    input_columns: List[str], 
+    available_cols: List[str],
+    threshold: int = 80
+) -> Tuple[Dict[str, str], List[str]]:
+    """
+    Match a list of input columns to available columns.
+    
+    Args:
+        input_columns: List of column names to match
+        available_cols: List of actual column names
+        threshold: Minimum fuzzy match score
+        
+    Returns:
+        Tuple of (matched_columns, missing_columns)
+        matched_columns: Dict of {input: matched_column}
+        missing_columns: List of input columns with no good match
+    """
     matched = {}
+    missing = []
     
-    # Find all potential column references in query
-    words = re.findall(r'\b\w+\b', user_query)
-    
-    for word in words:
-        cleaned_word = clean_column_name(word)
-        # Skip very short words
-        if len(cleaned_word) < 3:
-            continue
+    for col in input_columns:
+        matched_col = find_best_column_match(col, available_cols, threshold)
+        if matched_col:
+            matched[col] = matched_col
+        else:
+            missing.append(col)
             
-        match, score = process.extractOne(cleaned_word, cleaned_actual)
-        if score >= threshold:
-            original_col = actual_cols[cleaned_actual.index(match)]
-            matched[word] = original_col
-    
-    # Replace matches in query while preserving original case
-    cleaned_query = user_query
-    for original, corrected in matched.items():
-        cleaned_query = re.sub(
-            rf'(?<!\w){re.escape(original)}(?!\w)',  # Whole word match
-            corrected,
-            cleaned_query,
-            flags=re.IGNORECASE
-        )
-    
-    return cleaned_query, list(matched.values())
+    return matched, missing

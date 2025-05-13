@@ -37,7 +37,7 @@ from django.conf import settings
 from typing import Union
 from langchain.tools import tool
 from fuzzywuzzy import process
-from .column_matcher import correct_and_replace_columns  # Import the column matcher
+from .column_matcher import find_best_column_match, match_columns # Import the column matcher
 
 
 # Instantiate LLM
@@ -113,56 +113,26 @@ def linear_regression_tool(input_str: str) -> str:
     features = [f.strip() for f in params.get("features", "").split(",") if f.strip()]
     
     try:
-        # Resolve file path properly
+        # Resolve file path
         real_path = resolve_file_path(file_name)
-        if not os.path.exists(real_path):
-            available_files = [
-                f for f in os.listdir(os.path.join(settings.MEDIA_ROOT, 'user_uploads')) 
-                if f.endswith('.csv')
-            ]
-            return (
-                f"File '{file_name}' not found in uploads directory.\n"
-                f"Available files: {available_files or 'None found'}"
-            )
-        
-        # Load data
         df = pd.read_csv(real_path)
         actual_cols = df.columns.tolist()
-        
-        # Improved column matcher
-        def find_best_column_match(input_col: str, available_cols: List[str]) -> str:
-            input_col = input_col.lower().replace("_", "").replace(" ", "")
-            available_clean = [(c, c.lower().replace("_", "").replace(" ", "")) for c in available_cols]
-            
-            # Try exact match first
-            for orig, clean in available_clean:
-                if input_col == clean:
-                    return orig
-            
-            # Try contains match
-            for orig, clean in available_clean:
-                if input_col in clean:
-                    return orig
-            
-            # Try fuzzy match
-            match, score = process.extractOne(input_col, [clean for _, clean in available_clean])
-            if score > 80:  # Only accept good matches
-                return available_cols[[clean for _, clean in available_clean].index(match)]
-            return None
         
         # Match target column
         matched_target = find_best_column_match(target, actual_cols)
         if not matched_target:
             return f"Target column '{target}' not found. Available columns: {actual_cols}"
         
-        # Match feature columns
-        matched_features = []
-        for feat in features:
-            matched = find_best_column_match(feat, actual_cols)
-            if not matched:
-                return f"Feature column '{feat}' not found. Available columns: {actual_cols}"
-            matched_features.append(matched)
+        # Match feature columns (if applicable)
+        if features:
+            matched_features = []
+            for feat in features:
+                matched = find_best_column_match(feat, actual_cols)
+                if not matched:
+                    return f"Feature column '{feat}' not found. Available columns: {actual_cols}"
+                matched_features.append(matched)
         
+
         # Run regression
         result = perform_linear_regression(real_path, matched_target, matched_features)
         return (
@@ -241,20 +211,85 @@ def perform_polynomial_regression(file_path: str, target: str, features: list, d
     except Exception as e:
         return f"Error during polynomial regression: {str(e)}"
 
-
 @tool(return_direct=True)
 def polynomial_regression_tool(input_str: str) -> str:
-    """Perform polynomial regression. Format: 'file_path=path; target=target; features=feat1,feat2,...; degree=int'"""
+    """Perform polynomial regression. 
+    Format: 'file_path=path; target=target; features=feat1,feat2,...; degree=int'
+    If features are not specified, uses all numeric columns except target.
+    """
     params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
     file_name = params.get("file_path", "").strip()
     target = params.get("target", "").strip()
-    features = params.get("features", "").split(",")
+    features = [f.strip() for f in params.get("features", "").split(",") if f.strip()]
     degree = int(params.get("degree", "2").strip())
+    
     try:
+        # Resolve file path
         real_path = resolve_file_path(file_name)
-        return perform_polynomial_regression(real_path, target, features, degree)
+        if not os.path.exists(real_path):
+            available_files = [
+                f for f in os.listdir(os.path.join(settings.MEDIA_ROOT, 'user_uploads')) 
+                if f.endswith('.csv')
+            ]
+            return (
+                f"File '{file_name}' not found in uploads directory.\n"
+                f"Available files: {available_files or 'None found'}"
+            )
+        
+        # Load data and get columns
+        df = pd.read_csv(real_path)
+        actual_cols = df.columns.tolist()
+        
+        # Match target column with better error handling
+        matched_target = find_best_column_match(target, actual_cols)
+        if not matched_target:
+            return (
+                f"Target column '{target}' not found. Available columns:\n"
+                f"{', '.join(actual_cols)}"
+            )
+        
+        # If no features specified, use all numeric columns except target
+        if not features:
+            numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+            features = [col for col in numeric_cols if col != matched_target]
+            if not features:
+                return "Error: No suitable numeric features found in the dataset."
+        
+        # Match feature columns with better feedback
+        matched_features = []
+        unmatched_features = []
+        
+        for feat in features:
+            matched = find_best_column_match(feat, actual_cols)
+            if matched:
+                matched_features.append(matched)
+            else:
+                unmatched_features.append(feat)
+        
+        if unmatched_features:
+            return (
+                f"Could not match these feature columns: {', '.join(unmatched_features)}\n"
+                f"Available columns: {', '.join(actual_cols)}"
+            )
+        
+        # Validate degree
+        if degree < 1 or degree > 5:
+            return "Error: Degree must be between 1 and 5 (inclusive)."
+        
+        # Run polynomial regression with matched columns
+        return perform_polynomial_regression(
+            real_path, 
+            matched_target, 
+            matched_features, 
+            degree
+        )
+        
+    except ValueError as e:
+        return f"Input error: {str(e)}"
+    except pd.errors.EmptyDataError:
+        return "Error: The file is empty or corrupt."
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error performing polynomial regression: {str(e)}"
     
 # ===========================================================================================
 
@@ -361,21 +396,76 @@ def correlation_tool(input_str: str) -> str:
     params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
     file_name = params.get("file_path", "").strip()
     target = params.get("target", "").strip()
-    features = params.get("features", "").strip().split(",")
+    features = [f.strip() for f in params.get("features", "").split(",") if f.strip()]
+    
     try:
+        # Resolve file path
         real_path = resolve_file_path(file_name)
-        result = perform_correlation_analysis(real_path, target, features)
+        if not os.path.exists(real_path):
+            available_files = [
+                f for f in os.listdir(os.path.join(settings.MEDIA_ROOT, 'user_uploads')) 
+                if f.endswith('.csv')
+            ]
+            return (
+                f"File '{file_name}' not found in uploads directory.\n"
+                f"Available files: {available_files or 'None found'}"
+            )
+        
+        # Load data and get columns
+        df = pd.read_csv(real_path)
+        actual_cols = df.columns.tolist()
+        
+        # Match target column with improved error message
+        matched_target = find_best_column_match(target, actual_cols)
+        if not matched_target:
+            return (
+                f"Target column '{target}' not found. Available columns:\n"
+                f"{', '.join(actual_cols)}"
+            )
+        
+        # Match feature columns with better feedback
+        matched_features = []
+        unmatched_features = []
+        
+        for feat in features:
+            matched = find_best_column_match(feat, actual_cols)
+            if matched:
+                matched_features.append(matched)
+            else:
+                unmatched_features.append(feat)
+        
+        if unmatched_features:
+            return (
+                f"Could not match these feature columns: {', '.join(unmatched_features)}\n"
+                f"Available columns: {', '.join(actual_cols)}"
+            )
+        
+        if not matched_features:
+            return "Error: Please specify at least one feature column."
+        
+        # Run correlation analysis with matched columns
+        result = perform_correlation_analysis(real_path, matched_target, matched_features)
+        
+        # Format output
         output = []
         for feat, stats in result.items():
             output.append(
-                f"{feat}:\n"
-                f"  Pearson: {stats['pearson']} ({stats['pearson_interpretation']})\n"
-                f"  Spearman: {stats['spearman']} ({stats['spearman_interpretation']})"
+                f"📊 {feat}:\n"
+                f"  • Pearson: {stats['pearson']} ({stats['pearson_interpretation']})\n"
+                f"  • Spearman: {stats['spearman']} ({stats['spearman_interpretation']})"
             )
-        return "\n".join(output)
+        
+        return (
+            f"Correlation Analysis:\n"
+            f"Target: {matched_target}\n"
+            f"Features: {', '.join(matched_features)}\n\n" +
+            "\n\n".join(output)
+        )
+        
+    except pd.errors.EmptyDataError:
+        return "Error: The file is empty or corrupt."
     except Exception as e:
-        return f"Error: {str(e)}"
-
+        return f"Error performing correlation analysis: {str(e)}"
 # ===========================================================================================
 
 # ===========================================================================================
@@ -425,13 +515,11 @@ class ANNClassifier:
         }
 
 
-
 @tool(return_direct=True)
 def get_ann_tool(input_str: str) -> str:
     """
     Perform ANN-based classification. Format: 'file_path=filename.csv; target=column_name'
     """
-    import re
     params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
     file_name = params.get("file_path", "").strip()
     target_column = params.get("target", "").strip()
@@ -440,18 +528,62 @@ def get_ann_tool(input_str: str) -> str:
         return "Missing required parameters. Format: 'file_path=filename.csv; target=column_name'"
 
     try:
-        file_path = resolve_file_path(file_name)  # Matches regression tool
-        classifier = ANNClassifier(file_path)     # Use file_path consistently
-        result = classifier.train_ann(target_column=target_column)
+        # Resolve file path with better error handling
+        real_path = resolve_file_path(file_name)
+        if not os.path.exists(real_path):
+            # Check available files in upload directory
+            upload_dir = os.path.join(settings.MEDIA_ROOT, 'user_uploads')
+            available_files = []
+            if os.path.exists(upload_dir):
+                available_files = [f for f in os.listdir(upload_dir) if f.endswith('.csv')]
+            
+            return (
+                f"File '{file_name}' not found in uploads directory.\n"
+                f"Available CSV files: {', '.join(available_files) if available_files else 'None found'}"
+            )
 
+        # Load data and get columns
+        df = pd.read_csv(real_path)
+        actual_cols = df.columns.tolist()
+
+        # Match target column with fuzzy matching
+        matched_target = find_best_column_match(target_column, actual_cols)
+        if not matched_target:
+            return (
+                f"Target column '{target_column}' not found. Available columns:\n"
+                f"{', '.join(actual_cols)}"
+            )
+
+        # Validate target column is numeric
+        if not pd.api.types.is_numeric_dtype(df[matched_target]):
+            numeric_cols = df.select_dtypes(include='number').columns.tolist()
+            return (
+                f"Error: Target column '{matched_target}' must be numeric for ANN classification.\n"
+                f"Available numeric columns: {', '.join(numeric_cols) if numeric_cols else 'None found'}"
+            )
+
+        # Run ANN classification with matched target column
+        classifier = ANNClassifier(real_path)
+        result = classifier.train_ann(target_column=matched_target)
+
+        # Format output
         return (
-            f"Classification complete for: {result['target']}\n"
-            f"Accuracy: {result['accuracy']*100:.2f}%\n"
-            f"Threshold used: {result['threshold']}\n"
-            f"Predictions (first 10): {result['predictions'][:10].tolist()}..."
+            f"🧠 ANN Classification Results:\n\n"
+            f"• Target Column: {matched_target}\n"
+            f"• Model Accuracy: {result['accuracy']*100:.2f}%\n"
+            f"• Classification Threshold (median): {result['threshold']:.4f}\n"
+            f"• Class Distribution:\n"
+            f"  - High Class (≥ threshold): {sum(result['predictions'])} cases\n"
+            f"  - Low Class (< threshold): {len(result['predictions']) - sum(result['predictions'])} cases\n"
+            f"• First 10 Predictions: {result['predictions'][:10].tolist()}"
         )
+
+    except pd.errors.EmptyDataError:
+        return "Error: The file is empty or contains no data."
+    except ValueError as e:
+        return f"Input error: {str(e)}"
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error performing ANN classification: {str(e)}"
 
 
 
@@ -497,87 +629,159 @@ Write the report clearly and concisely:
         except Exception as e:
             return f"Report generation failed: {str(e)}"
 
-
 @tool(return_direct=True)
 def get_report_generator_tool(input_str: str) -> str:
-    """
-    Generate a structured report from the dataset. 
-    Accepts either:
-    - Format: 'file_path=filename.csv'
-    - Or just the filename: 'filename.csv'
-    """
-    try:
-        # Handle both formats
-        if 'file_path=' in input_str:
-            params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
-            file_name = params.get("file_path", "").strip()
-        else:
-            file_name = input_str.strip()  # Assume the whole input is filename
-            
-        if not file_name:
-            return "Please provide a filename. Format: 'file_path=filename.csv' or just 'filename.csv'"
-
-        file_path = resolve_file_path(file_name)
-        report_generator = DatasetReportGenerator(file_path)
-        return report_generator.generate_report("")
-    except Exception as e:
-        return f"Error generating report: {str(e)}"
-
-
-
-# ===========================================================================================
+    """Generate a structured report from a dataset. 
+    Input must be in one of these formats:
+    - 'file_path=filename.csv'
+    - 'filename.csv'
     
+    Example: 
+    - 'file_path=your_data.csv' 
+    - 'sales_data.csv'"""
+    
+    try:
+        # Handle empty input case first
+        if not input_str.strip():
+            return (
+                "⚠️ Please provide a filename.\n"
+                "Valid formats:\n"
+                "- 'file_path=data.csv'\n"
+                "- 'data.csv'\n\n"
+                "Example: 'file_path=your_assignment_data.csv'"
+            )
+
+        # Parse input with better error handling
+        if 'file_path=' in input_str:
+            try:
+                params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
+                file_name = params.get("file_path", "").strip()
+            except Exception:
+                file_name = input_str.replace('file_path=', '').strip()
+        else:
+            file_name = input_str.strip()
+
+        if not file_name:
+            return (
+                "Invalid input format.\n"
+                "Please use one of these formats:\n"
+                "- 'file_path=filename.csv'\n"
+                "- 'filename.csv'\n\n"
+                "Example: 'sales_data.csv'"
+            )
+
+        # File handling with comprehensive checks
+        real_path = resolve_file_path(file_name)
+        if not os.path.exists(real_path):
+            # Get available files with proper error handling
+            upload_dir = os.path.join(settings.MEDIA_ROOT, 'user_uploads')
+            try:
+                available_files = [
+                    f for f in os.listdir(upload_dir) 
+                    if f.endswith('.csv') and not f.startswith('.')
+                ] if os.path.exists(upload_dir) else []
+            except Exception as e:
+                available_files = []
+                print(f"Error reading upload directory: {str(e)}")
+
+            return (
+                f"🔍 File '{file_name}' not found.\n\n"
+                f"Available CSV files:\n"
+                f"{chr(10).join(f'• {f}' for f in available_files) if available_files else '• No CSV files available'}\n\n"
+                f"Please upload your file first or check the filename."
+            )
+
+        # Validate file content
+        if os.path.getsize(real_path) == 0:
+            return "Error: The file is empty. Please upload a valid CSV file with data."
+
+        try:
+            # Quick check if file is readable CSV
+            pd.read_csv(real_path, nrows=1)
+        except pd.errors.ParserError:
+            return "Error: Invalid CSV format. Please check the file."
+        except UnicodeDecodeError:
+            return "Error: File encoding issue. Please save as UTF-8 CSV."
+
+        # Generate report with matched file
+        report_generator = DatasetReportGenerator(real_path)
+        report = report_generator.generate_report("")
+        
+        return (
+            f"📊 Dataset Analysis Report\n"
+            f"File: {file_name}\n\n"
+            f"{report}\n\n"
+            f"💡 Need more specific insights? You can ask about:\n"
+            f"- Correlations between columns\n"
+            f"- Statistical summaries\n"
+            f"- Data visualizations"
+        )
+
+    except pd.errors.EmptyDataError:
+        return "Error: The file contains no data or has invalid format."
+    except Exception as e:
+        return (
+            f"Report generation failed.\n\n"
+            f"Possible issues:\n"
+            f"1. File is not a valid CSV\n"
+            f"2. File contains corrupted data\n"
+            f"3. File permissions issue\n\n"
+            f"Technical details: {str(e)}"
+        )
+# ===========================================================================================
+from difflib import get_close_matches
+import pandas as pd
+import re
+
 class HistoricalQueryTool:
     def __init__(self, file_path):
         self.df = pd.read_csv(file_path)
+        self.columns = self.df.columns.tolist()
 
     def handle_query(self, query: str) -> str:
         df = self.df.copy()
         query = query.lower()
-        columns = df.columns.tolist()
 
-        # Extract year
+        # Extract the year from the query if present
         year_match = re.search(r"\b(20\d{2})\b", query)
         year = int(year_match.group()) if year_match else None
 
-        # Match column using fuzzy match
+        # Find the most relevant column using fuzzy matching
+        possible_revenue_keywords = ["revenue", "sales", "spend", "income", "earnings", "profit"]
         matched_column = None
         for word in query.split():
-            close_matches = get_close_matches(word, columns, n=1, cutoff=0.6)
-            if close_matches:
-                matched_column = close_matches[0]
+            # Use fuzzy matching for each keyword
+            for keyword in possible_revenue_keywords:
+                close_matches = get_close_matches(keyword, self.columns, n=1, cutoff=0.4)
+                if close_matches:
+                    matched_column = close_matches[0]
+                    break
+            if matched_column:
                 break
 
         if not matched_column:
-            return "Couldn't detect a relevant column from your query."
+            return "Couldn't detect a relevant revenue-related column from your query."
 
-        # Filter by year
-        if year:
-            if 'year' in df.columns:
-                df = df[df['year'] == year]
-            else:
-                date_col = next((col for col in df.columns if 'date' in col.lower()), None)
-                if date_col:
-                    df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-                    df = df[df[date_col].dt.year == year]
+        # Filter by year if needed
+        if year and 'report_date' in df.columns:
+            df['report_date'] = pd.to_datetime(df['report_date'], errors='coerce')
+            df = df[df['report_date'].dt.year == year]
 
-        # Handle different operations
-        if "average" in query or "mean" in query:
-            return f"The average of **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].mean():.2f}`"
-        
-        if "total" in query or "sum" in query:
-            return f"The total of **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].sum():,.2f}`"
-        
-        if "highest" in query or "maximum" in query or "max" in query:
-            return f"The highest value of **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].max():,.2f}`"
-        
-        if "lowest" in query or "minimum" in query or "min" in query:
-            return f"The lowest value of **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].min():,.2f}`"
-        
-        if "count" in query or "how many" in query:
-            return f"Number of entries for **{matched_column}**{f' in {year}' if year else ''} is `{df[matched_column].count():,}`"
+        # Calculate the total revenue
+        if matched_column in df.columns:
+            total_revenue = df[matched_column].sum()
+            return (
+                f"📊 Historical Data Response:\n\n"
+                f"• Matched Column: {matched_column}\n"
+                f"• Total {matched_column} in **{year if year else 'all years'}**: `{total_revenue:,.2f}`\n"
+                f"• Data Type: {df[matched_column].dtype}\n"
+                f"• Sample Data: {df[matched_column].head(5).tolist()}"
+            )
+        else:
+            return f"Column **{matched_column}** not found in the data."
 
         return "Sorry, I couldn't understand your historical question."
+
 
 
     
@@ -586,7 +790,6 @@ def get_history_tool(input_str: str) -> str:
     """
     Answer historical questions. Format: 'file_path=filename.csv; question=What was the total revenue in 2023?'
     """
-    import re
     params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
     file_name = params.get("file_path", "").strip()
     query = params.get("question", "").strip()
@@ -595,11 +798,42 @@ def get_history_tool(input_str: str) -> str:
         return "Please provide both file_path and question in the format: 'file_path=...; question=...'."
 
     try:
+        # Resolve file path
         file_path = resolve_file_path(file_name)
-        tool_instance = HistoricalQueryTool(file_path)
-        return tool_instance.handle_query(query)
+
+        # Load data
+        df = pd.read_csv(file_path)
+        actual_cols = df.columns.tolist()
+
+        # Attempt to match query keywords with columns
+        matched_column = find_best_column_match(query, actual_cols)
+        if not matched_column:
+            return (
+                f"No matching column found for the question '{query}'.\n"
+                f"Available columns: {', '.join(actual_cols)}"
+            )
+
+        # Generate response based on matched column
+        return (
+            f"📊 Historical Data Response:\n\n"
+            f"• Matched Column: {matched_column}\n"
+            f"• Total {matched_column} in the dataset: {df[matched_column].sum()}\n"
+            f"• Data Type: {df[matched_column].dtype}\n"
+            f"• Sample Data: {df[matched_column].head(5).tolist()}"
+        )
+
+    except FileNotFoundError as e:
+        # Handle missing files
+        upload_dir = os.path.join(settings.MEDIA_ROOT, 'user_uploads')
+        available_files = [f for f in os.listdir(upload_dir) if f.endswith('.csv')]
+        return (
+            f"File '{file_name}' not found in the uploads directory.\n"
+            f"Available CSV files: {', '.join(available_files) if available_files else 'None found'}"
+        )
+    except pd.errors.EmptyDataError:
+        return "Error: The file is empty or contains no data."
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error processing historical data: {str(e)}"
 
 
 
@@ -635,29 +869,70 @@ Please write a simple and clear summary of what this dataset contains, highlight
             return f"Error during summarization: {str(e)}"
 
     
-
-
-
-    
 @tool(return_direct=True)
 def get_simple_summary_tool(input_str: str) -> str:
     """
     Generate a simple LLM-based summary of a dataset.
-    Format: 'file_path=filename.csv'
+    Format: 'file_path=filename.csv; columns=col1,col2,...'
     """
     import re
+    import os
+    import pandas as pd
+    
+    # Extract parameters from input string
     params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
     file_name = params.get("file_path", "").strip()
-
+    column_names = [col.strip() for col in params.get("columns", "").split(",") if col.strip()]
+    
     if not file_name:
         return "Please provide file_path in the format: 'file_path=filename.csv'"
-
+    
     try:
+        # Resolve the file path
         file_path = resolve_file_path(file_name)
+        
+        # Check if the file exists
+        if not os.path.exists(file_path):
+            available_files = [
+                f for f in os.listdir(os.path.join(settings.MEDIA_ROOT, 'user_uploads')) 
+                if f.endswith('.csv')
+            ]
+            return (
+                f"File '{file_name}' not found in uploads directory.\n"
+                f"Available files: {available_files or 'None found'}"
+            )
+        
+        # Load the dataset
+        df = pd.read_csv(file_path)
+        actual_cols = df.columns.tolist()
+        
+        # Match requested columns
+        matched_columns = []
+        unmatched_columns = []
+        
+        for col in column_names:
+            matched = find_best_column_match(col, actual_cols)
+            if matched:
+                matched_columns.append(matched)
+            else:
+                unmatched_columns.append(col)
+        
+        if unmatched_columns:
+            return (
+                f"Could not match these columns: {', '.join(unmatched_columns)}\n"
+                f"Available columns: {', '.join(actual_cols)}"
+            )
+        
+        # Summarize the matched columns
         summarizer = SimpleLLMSummarizer(file_path)
-        return summarizer.summarize_dataset("")
+        summary = summarizer.summarize_dataset(", ".join(matched_columns))
+        return summary
+        
+    except pd.errors.EmptyDataError:
+        return "Error: The file is empty or corrupt."
     except Exception as e:
         return f"Error: {str(e)}"
+
 
 
 
@@ -719,28 +994,93 @@ class DynamicANNPredictor:
         return interpretation
 
 
-   
 @tool(return_direct=True)
 def get_dynamic_prediction_tool(input_str: str) -> str:
     """
     Uses an ANN to classify a target column into high/low classes based on a query.
-    Format: 'file_path=filename.csv; question=your prediction query'
-    Example: 'file_path=data.csv; question=Predict CLI for this quarter'
+    Format: 'file_path=filename.csv; target=target_column; features=feat1,feat2,...; question=your prediction query'
+    Example: 'file_path=data.csv; target=Revenue; features=Year,Month,Sales; question=Predict sales for next quarter'
     """
     import re
+    import os
+    import pandas as pd
+    
+    # Extract parameters from input string
     params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
     file_name = params.get("file_path", "").strip()
+    target = params.get("target", "").strip()
+    features = [f.strip() for f in params.get("features", "").split(",") if f.strip()]
     query = params.get("question", "").strip()
 
-    if not file_name or not query:
-        return "Please provide both file_path and question in the format: 'file_path=filename.csv; question=your query'"
-
+    # Check required parameters
+    if not file_name or not target or not features or not query:
+        return (
+            "Please provide all required parameters in the format:\n"
+            "'file_path=filename.csv; target=target_column; features=feat1,feat2,...; question=your query'"
+        )
+    
     try:
+        # Resolve the file path
         file_path = resolve_file_path(file_name)
+        
+        # Check if the file exists
+        if not os.path.exists(file_path):
+            available_files = [
+                f for f in os.listdir(os.path.join(settings.MEDIA_ROOT, 'user_uploads')) 
+                if f.endswith('.csv')
+            ]
+            return (
+                f"File '{file_name}' not found in uploads directory.\n"
+                f"Available files: {available_files or 'None found'}"
+            )
+        
+        # Load the dataset
+        df = pd.read_csv(file_path)
+        actual_cols = df.columns.tolist()
+        
+        # Match the target column
+        matched_target = find_best_column_match(target, actual_cols)
+        if not matched_target:
+            return (
+                f"Target column '{target}' not found. Available columns:\n"
+                f"{', '.join(actual_cols)}"
+            )
+        
+        # Match the feature columns
+        matched_features = []
+        unmatched_features = []
+        
+        for feat in features:
+            matched = find_best_column_match(feat, actual_cols)
+            if matched:
+                matched_features.append(matched)
+            else:
+                unmatched_features.append(feat)
+        
+        if unmatched_features:
+            return (
+                f"Could not match these feature columns: {', '.join(unmatched_features)}\n"
+                f"Available columns: {', '.join(actual_cols)}"
+            )
+        
+        if not matched_features:
+            return "Error: Please specify at least one feature column."
+        
+        # Train and predict using the matched columns
         predictor = DynamicANNPredictor(file_path)
-        return predictor.train_and_predict(query)
+        prediction = predictor.train_and_predict(
+            query=query,
+            target_column=matched_target,
+            feature_columns=matched_features
+        )
+        
+        return prediction
+        
+    except pd.errors.EmptyDataError:
+        return "Error: The file is empty or corrupt."
     except Exception as e:
         return f"Error: {str(e)}"
+
 
 
 # # ======================================================================
@@ -768,18 +1108,64 @@ Output only the code, inside a Python code block.
 @tool("llm_visualization", return_direct=True)
 def get_visualization_tool(input_str: str) -> str:
     """Returns matplotlib/seaborn code generated by an LLM based on the dataset and question.
-    Format: 'file_path=filename.csv; question=your visualization request' 
+    Format: 'file_path=filename.csv; question=your visualization request'
     """
     import re
+    import os
+    import pandas as pd
+    
     params = dict(re.findall(r'(\w+)=([^;]+)', input_str))
     file_name = params.get("file_path", "").strip()
     query = params.get("question", "").strip()
+
     if not file_name or not query:
         return "Please provide both file_path and question in the format: 'file_path=filename.csv; question=your query'"
+
     try:
+        # Resolve the file path
         file_path = resolve_file_path(file_name)
+        
+        # Check if the file exists
+        if not os.path.exists(file_path):
+            available_files = [
+                f for f in os.listdir(os.path.join(settings.MEDIA_ROOT, 'user_uploads')) 
+                if f.endswith('.csv')
+            ]
+            return (
+                f"File '{file_name}' not found in uploads directory.\n"
+                f"Available files: {available_files or 'None found'}"
+            )
+        
+        # Load the dataset
+        df = pd.read_csv(file_path)
+        actual_cols = df.columns.tolist()
+        
+        # Validate columns from the query (if any)
+        requested_columns = re.findall(r'\b\w+\b', query)  # Extract words that could be columns
+        matched_columns = []
+        unmatched_columns = []
+        
+        for col in requested_columns:
+            matched = find_best_column_match(col, actual_cols)
+            if matched:
+                matched_columns.append(matched)
+            else:
+                unmatched_columns.append(col)
+        
+        if unmatched_columns:
+            return (
+                f"Could not match these columns: {', '.join(unmatched_columns)}\n"
+                f"Available columns: {', '.join(actual_cols)}"
+            )
+
+        # Generate code for visualization
         generator = LLMVisualizationGenerator(file_path)
-        return generator.generate_code(query)
+        visualization_code = generator.generate_code(query)
+
+        return visualization_code
+
+    except pd.errors.EmptyDataError:
+        return "Error: The file is empty or corrupt."
     except Exception as e:
         return f"Error: {str(e)}"
 

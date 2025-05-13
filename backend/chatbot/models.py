@@ -1,15 +1,14 @@
-
 from django.contrib.auth.models import User
 from django.db import models
-
 from django.utils import timezone
 import uuid
 
-class ChatSession(models.Model):  # or a MongoDB schema
+class ChatSession(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     created_at = models.DateTimeField(default=timezone.now)
     name = models.CharField(max_length=255, default="New Chat")
+
 class ChatHistory(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     prompt = models.TextField()
@@ -19,17 +18,6 @@ class ChatHistory(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.timestamp} - {self.session.name if self.session else 'No session'}"
-
-from django.contrib.auth.models import User
-from django.db import models
-import uuid  # Import the uuid library
-
-from django.contrib.auth.models import User
-from django.db import models
-import uuid
-
-from django.contrib.auth.models import User
-from django.db import models
 
 class UploadedFile(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)

@@ -163,6 +163,7 @@ REST_FRAMEWORK = {
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+GENERATED_IMAGE_DIR = os.path.join(MEDIA_ROOT, 'generated_images')
 
 TEMPLATES = [
     {

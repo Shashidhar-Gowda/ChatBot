@@ -251,6 +251,7 @@ def route_tool_by_intent(user_message: str, context: Dict[str, Any]) -> (AgentEx
             (r'\b(average|total|highest|maximum|min|lowest|entries|count|how many|mean)\b', get_history_tool),
             (r'\b(classification|classify|ann|neural network)\b', get_ann_tool),
             (r'\b(summary|summarize)\b', get_simple_summary_tool),
+            (r'\b(graph|plot|visualize)\b',get_visualization_tool),
         ]
         
         

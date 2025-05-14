@@ -8,7 +8,8 @@ from .views import (
     get_ai_response_view,
     verify_token,
     FileUploadView,
-    get_grouped_chat_history
+    get_grouped_chat_history,
+    generate_graph
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -26,6 +27,7 @@ urlpatterns = [
     path('api/get_ai_response/', get_ai_response_view, name='get_ai_response'),
     path('api/verify_token/', verify_token, name='verify_token'),
     path('api/get_grouped_chat_history/', views.get_grouped_chat_history, name='get_grouped_chat_history'),
+    path('generate-graph/', generate_graph, name='generate-graph'),
 
     # path('api/get_chat_messages/<str:chat_id>/', views.get_chat_messages, name='get_chat_messages'),
     # path('api/save_chat/', views.save_user_chat, name='save_user_chat'),

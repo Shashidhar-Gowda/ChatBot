@@ -28,31 +28,34 @@ import json
 from bson import ObjectId
 import traceback
 
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def get_ai_response_view(request):
     try:
-        user_id = request.user.username  # Use user ID from JWT
-
-        if request.content_type == 'application/json':
-            try:
-                request_data = json.loads(request.body)
-            except json.JSONDecodeError:
-                return Response({'error': 'Invalid JSON'}, status=400)
-        else:
-            request_data = request.data
-
+        user_id = request.user.username
+        request_data = request.data
         prompt = request_data.get('prompt')
-        file_id = request_data.get('file_id')  # Get file_id from request
+        file_id = request_data.get('file_id')
+
         if not prompt:
             return Response({'error': 'Prompt is required'}, status=400)
 
-        # Use the new get_bot_response from main.py, passing file_id
-        ai_response = get_bot_response(prompt)
+        ai_response = get_bot_response(prompt, file_id)
 
         # Save chat history in MongoDB
         mongo_save_chat_history(user_id, prompt, ai_response, session_id=None)
+
+        # Parse visualization response if it exists
+        try:
+            response_data = json.loads(ai_response)
+            if 'image_url' in response_data:
+                return Response({
+                    'response': response_data,
+                    'status': 'success',
+                    'type': 'visualization'
+                })
+        except:
+            pass
 
         return Response({
             'response': ai_response,
@@ -61,6 +64,7 @@ def get_ai_response_view(request):
     except Exception as e:
         print(f"Error: {str(e)}\n{traceback.format_exc()}")
         return Response({'error': 'Internal server error'}, status=500)
+    
     
 class LoginView(APIView):
     def post(self, request):
@@ -198,22 +202,22 @@ import json
 from .models import UploadedFile # Assuming you have a model for uploaded data
 from .llm.main import get_bot_response  # We'll define this utility function
 
-@csrf_exempt
-def get_ai_response(request):
-    if request.method == "POST":
-        data = json.loads(request.body)
-        prompt = data.get('prompt')
+# @csrf_exempt
+# def get_ai_response(request):
+#     if request.method == "POST":
+#         data = json.loads(request.body)
+#         prompt = data.get('prompt')
 
-        # Call your LLM with only prompt
-        response = get_bot_response(prompt)
-        print("Prompt:", prompt)
-        print("Response:", response)
+#         # Call your LLM with only prompt
+#         response = get_bot_response(prompt)
+#         print("Prompt:", prompt)
+#         print("Response:", response)
 
-        bot_reply = response["messages"][-1].content if response.get("messages") else "No response."
+#         bot_reply = response["messages"][-1].content if response.get("messages") else "No response."
 
-        return JsonResponse({"response": bot_reply}, status=200)
-    else:
-        return JsonResponse({"error": "Only POST method allowed"}, status=405)
+#         return JsonResponse({"response": bot_reply}, status=200)
+#     else:
+#         return JsonResponse({"error": "Only POST method allowed"}, status=405)
 
 
 @csrf_exempt
@@ -308,3 +312,61 @@ def get_grouped_chat_history(request):
     except Exception as e:
         print("Chat history error:", str(e))
         return Response({"error": "Unable to fetch chat history"}, status=500)
+
+
+
+# visualization/views.py
+
+import os
+import uuid
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from django.http import JsonResponse, HttpResponse
+from django.conf import settings
+from django.views.decorators.csrf import csrf_exempt
+from django.core.files.storage import default_storage
+
+@csrf_exempt
+def generate_graph(request):
+    import json
+    
+    try:
+        data = json.loads(request.body)
+        file_path = data.get("file_path", "").strip()
+        question = data.get("question", "").strip()
+        
+        # Resolve the file path
+        resolved_path = os.path.join(settings.MEDIA_ROOT, 'user_uploads', file_path)
+        
+        # Check if the file exists
+        if not os.path.exists(resolved_path):
+            return JsonResponse({"error": f"File '{file_path}' not found."}, status=404)
+
+        # Load the dataset
+        df = pd.read_csv(resolved_path)
+        
+        # Generate a plot
+        plt.figure(figsize=(10, 6))
+        sns.set_style("whitegrid")
+        
+        # Basic example - you can extend this based on the question
+        if "correlation" in question.lower():
+            sns.heatmap(df.corr(), annot=True, cmap="coolwarm")
+        else:
+            sns.pairplot(df)
+        
+        # Save the plot to a unique file
+        file_name = f"plot_{uuid.uuid4().hex}.png"
+        plot_path = os.path.join(settings.MEDIA_ROOT, 'plots', file_name)
+        os.makedirs(os.path.dirname(plot_path), exist_ok=True)
+        plt.savefig(plot_path, bbox_inches='tight')
+        plt.close()
+
+        # Return the image URL
+        return JsonResponse({"image_url": f"/media/plots/{file_name}"})
+    
+    except pd.errors.EmptyDataError:
+        return JsonResponse({"error": "The file is empty or corrupt."}, status=400)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)

@@ -28,6 +28,7 @@ import json
 from bson import ObjectId
 import traceback
 
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def get_ai_response_view(request):
@@ -54,18 +55,24 @@ def get_ai_response_view(request):
                     'status': 'success',
                     'type': 'visualization'
                 })
-        except:
+        except Exception:
             pass
 
+        # Fix here: try to parse ai_response or fallback
+        try:
+            parsed_response = json.loads(ai_response)
+        except Exception:
+            parsed_response = ai_response
+
         return Response({
-            'response': ai_response,
+            'response': parsed_response,
             'status': 'success'
         })
     except Exception as e:
         print(f"Error: {str(e)}\n{traceback.format_exc()}")
         return Response({'error': 'Internal server error'}, status=500)
-    
-    
+
+
 class LoginView(APIView):
     def post(self, request):
         print("RAW request body:", request.body)

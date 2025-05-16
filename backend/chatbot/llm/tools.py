@@ -88,20 +88,38 @@ def get_column_names(file_path: str) -> str:
 # ===========================================================================================
 
 def perform_linear_regression(file_path: str, target: str, features: List[str]) -> dict:
+    # Load and prepare data
     df = pd.read_csv(file_path)
     df = df[features + [target]].dropna()
     X = df[features]
     y = df[target]
+    # Scale features for better performance
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_scaled, y, test_size=0.2, random_state=42
+    )
+    # Train model
     model = LinearRegression()
-    model.fit(X, y)
-    r2 = r2_score(y, model.predict(X))
-    intercept = model.intercept_
+    model.fit(X_train, y_train)
+    # Predict on test
+    y_pred = model.predict(X_test)
+    r2 = r2_score(y_test, y_pred)
+    # Get model equation on original feature names
     coefs = model.coef_
+    intercept = model.intercept_
     terms = " + ".join([f"{coef:.4f}*{feat}" for coef, feat in zip(coefs, features)])
     equation = f"{target} = {terms} + {intercept:.4f}"
-    return {"equation": equation, "r2_score": r2}
+    return {
+        "equation": equation,
+        "r2_score": round(r2, 4),
+        "features_used": features,
+        "model_type": "Linear Regression",
+        "split": "80/20 train/test",
+    }
 
-@tool()
+@tool(return_direct=True)
 def linear_regression_tool(input_str: str) -> str:
     """
     Perform linear regression on a given CSV file.
@@ -1194,8 +1212,8 @@ def get_visualization_tool(input_str: str) -> str:
         os.makedirs(os.path.dirname(plot_path), exist_ok=True)
 
         # 6. Inject the correct file path into the code
-        replacement_string = file_path.replace("'", "\\'")
-        code = code.replace(f"'{file_name}'", f"'{replacement_string}'")
+        escaped_plot_path = plot_path.replace("\\", "\\\\").replace('"', '\\"')
+        code = re.sub(r'plt\.savefig\((.*?)\)', f'plt.savefig("{escaped_plot_path}")', code)
 
         replacement_string = file_path.replace('"', '\\"')
         code = code.replace(f'"{file_name}"', f'"{replacement_string}"')
@@ -1249,12 +1267,22 @@ def get_visualization_tool(input_str: str) -> str:
             print(traceback_str)
             return json.dumps({"error": error_message, "code": code, "trace": traceback_str})
 
-        # 8. Return result
         return json.dumps({
-            "image_url": f"/media/plots/{plot_filename}",
-            "type": "custom",
-            "code_used": code
+            "response": {
+                "bot_reply": "Here's the visualization you requested.",
+                "intent": "VISUALIZATION",
+                "image_url": f"/media/plots/{plot_filename}",
+                "type": "visualization",
+                "title": "Data Visualization",
+                "x_field": "orders_all_np",
+                "y_field": "AffiliatesAll_spend",
+                "code_used": code
+            },
+            "type": "visualization"
         })
+
+
+
 
     except Exception as e:
         return json.dumps({"error": f"Error during visualization generation: {str(e)}", "trace": traceback.format_exc()})

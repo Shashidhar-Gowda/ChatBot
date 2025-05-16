@@ -131,18 +131,22 @@ const Home = () => {
           }
       
           const data = await response.json();
+          console.log("Backend Data:", data);
+          
           let botResponse;
-      
-          // Handle visualization response
+          
           if (data.type === 'visualization') {
-            const visualizationData = processVisualizationData(data.response);
+            console.log("Full visualization response:", data);
+            const visualizationData = processVisualizationData(data);
+            console.log("Processed visualization data:", visualizationData);
+            
             botResponse = {
-              text: `Here's the visualization for ${visualizationData.title}`,
-              isUser: false,
-              visualizationData: visualizationData
+                text: visualizationData ? 'Here is your visualization:' : 'Could not generate visualization',
+                isUser: false,
+                visualizationData: visualizationData,
+                intent: data.response?.intent || 'VISUALIZATION'
             };
           } else {
-            // Handle regular text response
             const { bot_reply, intent, matched_columns, query_used } = data.response || {};
             botResponse = {
               text: bot_reply || 'No response.',
@@ -152,8 +156,10 @@ const Home = () => {
               queryUsed: currentSessionId ? query_used || null : null,
             };
           }
-      
+          
           setChatLog(prev => [...prev, botResponse]);
+          
+
       
         } catch (error) {
           console.error("Fetch error:", error);
@@ -171,38 +177,70 @@ const Home = () => {
 
     // Chart Data Processing (using Chart.js)
     const processVisualizationData = (response) => {
-        if (!response.image_url) return null;
-        
-        return {
-          imageUrl: response.image_url,
-          type: response.type || 'scatter',
-          title: response.title || 'Data Visualization',
-          xField: response.x_field,
-          yField: response.y_field
-        };
-      };
+        try {
+            // Handle both direct response and nested response structures
+            const visualizationData = response.response?.response || response;
+            
+            if (!visualizationData) {
+                console.error("No visualization data found in response:", response);
+                return null;
+            }
+    
+            const imageUrl = visualizationData.image_url || visualizationData.response?.image_url;
+            
+            if (!imageUrl) {
+                console.error("No image_url found in visualization data:", visualizationData);
+                return null;
+            }
+            
+            return {
+                imageUrl: imageUrl,
+                type: visualizationData.type || 'scatter',
+                title: visualizationData.title || 'Data Visualization',
+                xField: visualizationData.x_field,
+                yField: visualizationData.y_field
+            };
+        } catch (error) {
+            console.error("Error processing visualization data:", error);
+            return null;
+        }
+    };
     
     // Add this right before your return statement
-const VisualizationComponent = ({ data }) => {
-    if (!data) return null;
-  
-    return (
-      <div className="visualization-container">
-        <h3>{data.title}</h3>
-        <div className="visualization-image">
-          <img 
-            src={`http://127.0.0.1:8000${data.imageUrl}`} 
-            alt={data.title}
-            style={{ maxWidth: '100%', height: 'auto' }}
-          />
-        </div>
-        <div className="visualization-details">
-          <p>X-axis: {data.xField}</p>
-          <p>Y-axis: {data.yField}</p>
-        </div>
-      </div>
-    );
-  };
+    const VisualizationComponent = ({ data }) => {
+        if (!data || !data.imageUrl) {
+            console.error("Invalid visualization data:", data);
+            return null;
+        }
+      
+        // Construct proper URL - handle cases where imageUrl might already have the base URL
+        const fullImageUrl = data.imageUrl.startsWith('http') 
+            ? data.imageUrl 
+            : `http://127.0.0.1:8000${data.imageUrl}`;
+    
+        return (
+          <div className="visualization-container">
+            <h3>{data.title}</h3>
+            <div className="visualization-image">
+              <img 
+                src={fullImageUrl}
+                alt={data.title}
+                style={{ maxWidth: '100%', height: 'auto' }}
+                onError={(e) => {
+                    console.error("Failed to load image:", fullImageUrl);
+                    e.target.style.display = 'none';
+                }}
+              />
+            </div>
+            {data.xField && data.yField && (
+                <div className="visualization-details">
+                  <p>X-axis: {data.xField}</p>
+                  <p>Y-axis: {data.yField}</p>
+                </div>
+            )}
+          </div>
+        );
+    };
   
     return (
         <div className="chat-gpt-container">

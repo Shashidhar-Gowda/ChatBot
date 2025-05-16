@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from .intent_detector import detect_intent
 from .utils import resolve_file_path  # Import the path resolver
 from .graph import runnable_graph
-
+import json
 
 from typing import List, Dict
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
@@ -70,14 +70,27 @@ def get_bot_response(user_input: str, file_name: str = None) -> Dict:
         # 5. Get and clean bot reply
         bot_reply = response["messages"][-1].content if response.get("messages") else "No response."
         cleaned_bot_reply = clean_think_messages(bot_reply)
-        
+
         # 6. Add bot reply to history
         chat_history.append(AIMessage(content=cleaned_bot_reply))
-        
+
+        # 7. Try to parse bot_reply if it's JSON
+        try:
+            parsed = json.loads(cleaned_bot_reply)
+
+            # ✅ If it's a visualization response, return it as-is
+            if isinstance(parsed, dict) and parsed.get("type") == "visualization":
+                parsed["intent"] = intent  # Inject detected intent
+                return parsed
+        except Exception:
+            pass  # Not JSON
+
+        # Default fallback for text replies
         return {
             "intent": intent,
             "bot_reply": cleaned_bot_reply
         }
+
         
     except Exception as e:
         print(f"Error in get_bot_response: {e}")

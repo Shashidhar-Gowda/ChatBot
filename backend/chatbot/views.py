@@ -227,45 +227,46 @@ from .llm.main import get_bot_response  # We'll define this utility function
 #         return JsonResponse({"error": "Only POST method allowed"}, status=405)
 
 
-@csrf_exempt
-def upload_and_process(request):
-    if request.method == "POST":
-        prompt = request.POST.get('prompt')
-        file = request.FILES.get('file')
+# @csrf_exempt
+# def upload_and_process(request):
+#     if request.method == "POST":
+#         prompt = request.POST.get('prompt')
+#         file = request.FILES.get('file')
 
-        if not file:
-            return JsonResponse({"error": "No file uploaded"}, status=400)
+#         if not file:
+#             return JsonResponse({"error": "No file uploaded"}, status=400)
 
-        # Save file locally temporarily
-        file_path = os.path.join(settings.MEDIA_ROOT, file.name)
-        with open(file_path, 'wb+') as destination:
-            for chunk in file.chunks():
-                destination.write(chunk)
+#         # Save file locally temporarily
+#         file_path = os.path.join(settings.MEDIA_ROOT, file.name)
+#         with open(file_path, 'wb+') as destination:
+#             for chunk in file.chunks():
+#                 destination.write(chunk)
 
-        # Process file (example: if CSV)
-        if file.name.endswith('.csv'):
-            df = pd.read_csv(file_path)
-            # Save data into PostgreSQL
-            for _, row in df.iterrows():
-                UploadedFile.objects.create(**row.to_dict())
+#         # Process file (example: if CSV)
+#         if file.name.endswith('.csv'):
+#             df = pd.read_csv(file_path)
+#             # Save data into PostgreSQL
+#             for _, row in df.iterrows():
+#                 UploadedFile.objects.create(**row.to_dict())
 
-        # Now call your LLM and tell it: "use uploaded data"
-        # (You can pass prompt + indicate to LLM that DB has fresh data)
+#         # Now call your LLM and tell it: "use uploaded data"
+#         # (You can pass prompt + indicate to LLM that DB has fresh data)
 
-        response = get_bot_response(prompt, use_db=True)
+#         response = get_bot_response(prompt, use_db=True)
 
-        return JsonResponse({"response": response}, status=200)
-    else:
-        return JsonResponse({"error": "Only POST method allowed"}, status=405)
-
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from .models import UploadedFile
-import os
-from django.conf import settings
+#         return JsonResponse({"response": response}, status=200)
+#     else:
+#         return JsonResponse({"error": "Only POST method allowed"}, status=405)
+    
 from django.utils.text import get_valid_filename
 from django.utils import timezone
+import os
+from datetime import datetime
+from .models import UploadedFile
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from django.conf import settings
 
 class FileUploadView(APIView):
     permission_classes = [IsAuthenticated]
@@ -275,35 +276,49 @@ class FileUploadView(APIView):
         if not uploaded_file:
             return Response({'error': 'No file uploaded.'}, status=400)
 
-        filename = get_valid_filename(uploaded_file.name)
-        file_path = os.path.join(settings.MEDIA_ROOT, 'user_uploads', filename)
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        user_id = request.user.id
+        print("Uploading for user ID:", user_id)  # ✅ Debug log
 
-        # Save file to disk
+        # Clean file name
+        original_name = get_valid_filename(uploaded_file.name)
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        new_filename = f"{timestamp}_{original_name}"
+
+        # Create user-specific folder
+        user_dir = os.path.join(settings.MEDIA_ROOT, 'Uploaded_data', f'user_{user_id}')
+        os.makedirs(user_dir, exist_ok=True)
+
+        # Save file
+        file_path = os.path.join(user_dir, new_filename)
         with open(file_path, 'wb+') as destination:
             for chunk in uploaded_file.chunks():
                 destination.write(chunk)
 
-        # Save file to database
+        # Save "latest_data_file" pointer
+        latest_pointer_path = os.path.join(user_dir, 'latest_data_file')
+        with open(latest_pointer_path, 'w') as f:
+            f.write(file_path)
+
+        # Save metadata to DB
         uploaded_instance = UploadedFile.objects.create(
             user=request.user,
-            file='user_uploads/' + filename,
+            file=os.path.relpath(file_path, settings.MEDIA_ROOT),
             filename=uploaded_file.name,
             uploaded_at=timezone.now()
         )
 
-        # 🛠 Save uploaded file metadata in session
+        # Save in session
         uploaded_files = request.session.get('uploaded_files', {})
         uploaded_files[uploaded_instance.filename] = uploaded_instance.id
         request.session['uploaded_files'] = uploaded_files
         request.session.modified = True
 
-        print(request.session.get('uploaded_files'))
-
         return Response({
             'message': 'File uploaded successfully!',
-            'file_id': uploaded_instance.id
+            'file_id': uploaded_instance.id,
+            'saved_path': file_path
         }, status=201)
+
 
 
 @api_view(['GET'])

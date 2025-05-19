@@ -11,22 +11,44 @@ const SignUp = () => {
 
   const handleSignup = async (e) => {
     e.preventDefault();
-
+  
     if (!email || !password) {
       setError('Please enter both email and password');
       return;
     }
-
+  
     try {
       setLoading(true);
-      const response = await axios.post(
+  
+      // 1. Clear any previous tokens
+      localStorage.removeItem("token");
+      localStorage.removeItem("refresh");
+      document.cookie = "token=; path=/; max-age=0";
+  
+      // 2. Signup
+      await axios.post(
         "http://127.0.0.1:8000/api/signup/",
         { email, password },
         { headers: { "Content-Type": "application/json" } }
       );
-
+  
+      // 3. Login right after signup
+      const loginResponse = await axios.post("http://127.0.0.1:8000/api/login/", {
+        email,
+        password,
+      });
+  
+      const { access, refresh } = loginResponse.data;
+  
+      // 4. Store new user token
+      localStorage.setItem("token", access);
+      localStorage.setItem("refresh", refresh);
+      document.cookie = `token=${access}; path=/; max-age=86400`;
+  
+      // 5. Navigate
+      navigate("/chat");
+  
       setLoading(false);
-      navigate('/chat'); // Redirect to chat page after successful signup
       setEmail("");
       setPassword("");
       setError("");
@@ -39,6 +61,8 @@ const SignUp = () => {
       setError(errorMessage);
     }
   };
+  
+  
 
   return (
     <div className="signup-container">

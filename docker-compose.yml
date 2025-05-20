@@ -10,7 +10,6 @@ services:
       - mongo
     environment:
       - MONGO_URI=mongodb://mongo:27017/chatbot_history
-      - GROQ_API_KEY=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
     ports:
       - "8000:8000"
     image: us-central1-docker.pkg.dev/beaming-botany-457907-b7/version01/backendv03:latest  
